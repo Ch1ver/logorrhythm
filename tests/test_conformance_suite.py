@@ -74,11 +74,25 @@ class ConformanceSuiteTests(unittest.TestCase):
             decode_message(msg, security=SecurityConfig(shared_secret=secret, secure_mode=True), nonce_store=ReplayNonceStore())
 
     def test_replay_protection(self):
-        payload = encode_agent_payload_v2(source_id="a", destination_id="b", instruction="HANDOFF", task="x", nonce=42)
+        payload = encode_agent_payload_v2(
+            source_id="a",
+            destination_id="b",
+            instruction="HANDOFF",
+            task="x",
+            nonce=42,
+            shared_secret=b"secret",
+            secure_mode=True,
+        )
         store = ReplayNonceStore()
-        decode_agent_payload_v2(payload, nonce_store=store)
+        security = SecurityConfig(shared_secret=b"secret", secure_mode=True)
+        decode_agent_payload_v2(payload, security=security, nonce_store=store)
         with self.assertRaisesRegex(DecodingError, "replayed nonce"):
-            decode_agent_payload_v2(payload, nonce_store=store)
+            decode_agent_payload_v2(payload, security=security, nonce_store=store)
+
+    def test_replay_check_only_when_secure_mode_enabled(self):
+        payload = encode_agent_payload_v2(source_id="a", destination_id="b", instruction="HANDOFF", task="x", nonce=42)
+        decode_agent_payload_v2(payload)
+        decode_agent_payload_v2(payload)
 
     def test_missing_signature_rejected_when_secure(self):
         payload = encode_agent_payload_v2(source_id="a", destination_id="b", instruction="HANDOFF", task="x", nonce=5)
@@ -126,6 +140,28 @@ class ConformanceSuiteTests(unittest.TestCase):
     def test_malformed_packet_rejection(self):
         with self.assertRaisesRegex(DecodingError, "Message too short for header"):
             decode_message("AQ")
+
+    def test_invalid_signature_bytes_raise_decoding_error(self):
+        secret = b"shared-secret"
+        payload = bytearray(
+            encode_agent_payload_v2(
+                source_id="a",
+                destination_id="b",
+                instruction="HANDOFF",
+                task="x",
+                nonce=3,
+                shared_secret=secret,
+                secure_mode=True,
+            )
+        )
+        payload[-1] = 0xFF
+        msg = encode_message(message_type=MessageType.AGENT, payload=bytes(payload), version=PROTOCOL_VERSION, flags=0b10)
+        with self.assertRaisesRegex(DecodingError, "invalid length for signature"):
+            decode_message(msg, security=SecurityConfig(shared_secret=secret, secure_mode=True), nonce_store=ReplayNonceStore())
+
+    def test_uuid4_version_enforced_for_correlation(self):
+        with self.assertRaisesRegex(DecodingError, "correlation_id must be UUID4"):
+            ensure_response_correlation("6ba7b810-9dad-11d1-80b4-00c04fd430c8", "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
     def test_inspect_renders_human_readable(self):
         import io

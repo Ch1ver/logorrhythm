@@ -84,6 +84,15 @@ class ReplayNonceStore:
 _DEFAULT_NONCE_STORE = ReplayNonceStore()
 
 
+def _require_uuid4(value: str, *, error_cls: type[EncodingError] | type[DecodingError], message: str) -> None:
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise error_cls(message) from exc
+    if parsed.version != 4:
+        raise error_cls(message)
+
+
 def encode_compact_payload(*, src: AgentCode, dst: AgentCode, instruction: InstructionCode, task: str) -> bytes:
     """Encode legacy compact payload: src:u8,dst:u8,instruction:u8,task:utf8."""
     if not isinstance(src, AgentCode):
@@ -137,10 +146,7 @@ def encode_agent_payload_v2(
         raise EncodingError("instruction must be a non-empty string")
 
     cid = correlation_id or str(uuid.uuid4())
-    try:
-        uuid.UUID(cid, version=4)
-    except ValueError as exc:
-        raise EncodingError("correlation_id must be UUID4") from exc
+    _require_uuid4(cid, error_cls=EncodingError, message="correlation_id must be UUID4")
 
     msg_nonce = (uuid.uuid4().int & ((1 << 64) - 1)) if nonce is None else int(nonce)
     if msg_nonce < 0:
@@ -226,7 +232,7 @@ def decode_agent_payload_v2(
 ) -> AgentEnvelopeV2:
     """Decode and validate v2 agent payload."""
     security = security or SecurityConfig()
-    nonce_store = nonce_store or _DEFAULT_NONCE_STORE
+    active_nonce_store = nonce_store or _DEFAULT_NONCE_STORE if security.secure_mode else None
 
     offset = 0
     source_id, offset = _decode_sized_text(payload, offset, "source_id")
@@ -241,10 +247,7 @@ def decode_agent_payload_v2(
     if not _AGENT_ID_RE.match(destination_id):
         raise DecodingError("malformed ID in destination_id")
 
-    try:
-        uuid.UUID(correlation_id, version=4)
-    except ValueError as exc:
-        raise DecodingError("missing correlation_id") from exc
+    _require_uuid4(correlation_id, error_cls=DecodingError, message="correlation_id must be UUID4")
 
     if offset + 8 + 2 > len(payload):
         raise DecodingError("Payload too short for nonce/task")
@@ -268,7 +271,10 @@ def decode_agent_payload_v2(
     offset += 1
     if offset + sig_len != len(payload):
         raise DecodingError("invalid length for signature")
-    signature = payload[offset : offset + sig_len].decode("ascii")
+    try:
+        signature = payload[offset : offset + sig_len].decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise DecodingError("invalid length for signature") from exc
 
     signed_region = payload[: offset - 1]
 
@@ -279,7 +285,7 @@ def decode_agent_payload_v2(
         if not hmac.compare_digest(signature, expected):
             raise DecodingError("invalid signature")
 
-    if not nonce_store.check_and_mark(source_id, nonce):
+    if security.secure_mode and active_nonce_store is not None and not active_nonce_store.check_and_mark(source_id, nonce):
         raise DecodingError("replayed nonce")
 
     return AgentEnvelopeV2(

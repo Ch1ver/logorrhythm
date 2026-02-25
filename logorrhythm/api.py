@@ -56,9 +56,11 @@ def encode_legacy(*, task: str, src: AgentCode = AgentCode.A1, dst: AgentCode = 
 
 def ensure_response_correlation(request_correlation_id: str, response_correlation_id: str) -> None:
     try:
-        uuid.UUID(request_correlation_id, version=4)
-        uuid.UUID(response_correlation_id, version=4)
-    except ValueError as exc:
-        raise DecodingError("missing correlation_id") from exc
+        request = uuid.UUID(request_correlation_id)
+        response = uuid.UUID(response_correlation_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise DecodingError("correlation_id must be UUID4") from exc
+    if request.version != 4 or response.version != 4:
+        raise DecodingError("correlation_id must be UUID4")
     if request_correlation_id != response_correlation_id:
         raise DecodingError("mismatched correlation_id")
