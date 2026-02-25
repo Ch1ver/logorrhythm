@@ -6,6 +6,7 @@ import argparse
 
 from ._demo_core import run_demo
 from .benchmark import benchmark_v001_vs_v002
+from .benchmark_sync import sync_readme_benchmark_table
 from .v003 import build_v003_dashboard
 
 
@@ -14,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--demo", action="store_true", help="Run the v0.0.2 demo")
     parser.add_argument("--benchmark", action="store_true", help="Compare v0.0.1 baseline against v0.0.2 transport")
     parser.add_argument("--v003-dashboard", action="store_true", help="Run the v0.0.3 scale simulation and print dashboard markdown")
+    parser.add_argument("--sync-benchmark-table", action="store_true", help="Recompute benchmark table and write to README")
     return parser
 
 
@@ -36,6 +38,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.v003_dashboard:
         print(build_v003_dashboard().to_markdown())
+        return 0
+
+    if args.sync_benchmark_table:
+        print(sync_readme_benchmark_table())
         return 0
 
     parser.print_help()

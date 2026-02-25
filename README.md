@@ -1,106 +1,42 @@
-# LOGORRHYTHM (v0.0.2)
+# LOGORRHYTHM (v0.0.3)
 
 LOGORRHYTHM is a two-layer protocol and execution language for AI-agent speed.
 
-## Vision
+<!-- BENCHMARK_TABLE_START -->
+| Version | Byte Reduction | Throughput Gain | Latency Improvement | Agents Tested |
+|---|---:|---:|---:|---|
+| v0.0.1 | baseline | baseline | baseline | 8/64/512 |
+| v0.0.2 | 22.37% | 27.62% | 21.64% | 8/64/512 |
+| v0.0.3 | 24.37% | 38.87% | 25.64% | 8/64/512 |
+<!-- BENCHMARK_TABLE_END -->
 
-LOGORRHYTHM is not a library. It is infrastructure for the agent era. When AI systems are running 120-day human workloads in 48 hours, they cannot afford to communicate in human-shaped formats. LOGORRHYTHM strips ceremony and ships pure signal: compact wire framing for inter-agent transport (Layer 1) and a compressed execution language for machine-native reasoning (Layer 2).
-
-## Layer 1 status (wire protocol)
-
-- Canonical binary header with positional fields.
-- Base64url transport for tool-safe message exchange.
-- CRC32 payload checksum and strict payload length enforcement.
-- Default message size limit: 4096 bytes.
-- Compact payload layout with no English field names:
-  - `src:u8` (agent code)
-  - `dst:u8` (agent code)
-  - `instruction:u8` (opcode)
-  - `task:utf8` (semantic content only)
-
-### Instruction byte codes
-
-- `0x01` HANDOFF
-- `0x02` COMPLETE
-- `0x03` QUERY
-- `0x04` ACKNOWLEDGE
-- `0x05` ERROR
-
-## Layer 2 status (execution language)
-
-v0.0.2 introduces a first compressed primitive sketch with 10 operations:
-
-- `R` retrieve
-- `S` store
-- `C` compare
-- `B` branch
-- `L` loop
-- `K` call
-- `N` return
-- `T` transform
-- `F` filter
-- `E` emit
-
-See `SPEC.md` for formal encoding and `ROADMAP.md` for progression.
-
-## v0.0.3 planning dashboard (new)
-
-We now ship a simulation-driven iteration dashboard that reports multi-agent communication improvements against the v0.0.1 baseline.
+The benchmark table is the release truth and is auto-synced on test runs via:
 
 ```bash
-python -m logorrhythm.cli --v003-dashboard
+python -m logorrhythm.cli --sync-benchmark-table
 ```
 
-The dashboard includes:
+## v0.0.3 delivered
 
-- scale tiers (8/64/512 agents by default),
-- total volume and byte footprint,
-- average encode/decode latency,
-- p95 proxy timing,
-- throughput gains,
-- prioritized v0.0.3 next-step recommendations,
-- security "shield" posture and hardening guidance.
+- **Chunked transport with sequence IDs**: large payloads are split into deterministic frames and reassembled by sequence index (`logorrhythm.chunking`).
+- **Scalable agent addressing**: five-segment global addresses (`region/node/model/shard/agent`) with compact address-book IDs (`logorrhythm.addressing`).
+- **Dead-agent detection**: heartbeat windows + grace misses (no false positive on one miss) via `DeadAgentDetector`.
+- **Layer 2 expansion**: adds confidence branch (`Q`), parallel fan-out/join (`P`/`J`), model handoff (`H`), and scoped memory ops (`W`/`M`/`Y`).
+- **Cross-model benchmark harness**: provider-agnostic adapter for sending encoded payloads between two model APIs and measuring token use.
+- **Benchmark CI gate**: workflow runs tests, re-syncs table, and fails on regressions.
 
-## v0.0.1 -> v0.0.2 benchmark check
+## New docs
 
-v0.0.3 planning now includes an explicit benchmark gate. We ship only if we can demonstrate measurable communication footprint improvements over the prior version.
+- `FUTURES.md`: message passing alternatives (shared state, blackboard, superposition).
+- `PHILOSOPHY.md`: compression manifesto and moral argument for machine-native communication.
 
-```bash
-python -m logorrhythm.cli --benchmark
-```
-
-Current benchmark corpus compares a v0.0.1-style JSON payload (`from`/`to`/`instruction`/`task`) with v0.0.2 canonical transport across multiple scenarios.
-
-## Is inter-agent communication built in yet?
-
-Short answer: partially.
-
-- **Built in today:** protocol encoding/decoding + a local in-memory mailbox (`AgentBus`) that simulates agent delivery in one Python process.
-- **Not built in yet:** real networked transport adapters (streaming sockets/HTTP/WebSocket/etc.), sequence-aware delivery, and backpressure controls.
-
-That gap is intentionally the v0.0.3 focus.
-
-## Security posture (hull + shields)
-
-Current hull protections are protocol-level integrity and strict validation. See `SECURITY.md` for defense-in-depth recommendations for source control, CI policies, and future signed transport mode.
-
-## Captain's log (FTL lane)
-
-If the farm is the USS *Protofield*, v0.0.2 means impulse engines are online and checksums are holding. v0.0.3 is where we unlock warp lanes: chunked frames, sequence IDs, and deterministic reassembly so parallel agents can coordinate at "go to warp" speed without dropping packets into subspace.
-
-## Run the demo
-
-```bash
-python demo.py
-python -m logorrhythm.cli --demo
-```
-
-The demo includes proxy benchmarks (char/byte/word) and optional `tiktoken` token counts when available.
-
-## Run tests
+## Commands
 
 ```bash
 python -m unittest
+python -m logorrhythm.cli --benchmark
+python -m logorrhythm.cli --v003-dashboard
+python -m logorrhythm.cli --sync-benchmark-table
 ```
 
 ## License
