@@ -191,6 +191,11 @@ def build_v003_dashboard(
     messages_per_agent: int = 25,
     seed: int = 7,
 ) -> V003Dashboard:
+    if messages_per_agent <= 0:
+        raise ValueError("messages_per_agent must be > 0")
+    if any(count <= 0 for count in agent_counts):
+        raise ValueError("agent_counts entries must all be > 0")
+
     scale_results = [
         _run_simulation(agent_count=count, messages_per_agent=messages_per_agent, seed=seed + i)
         for i, count in enumerate(agent_counts)

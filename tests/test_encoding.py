@@ -119,9 +119,27 @@ class EncodingTests(unittest.TestCase):
     def test_reject_unknown_instruction_code(self):
         bad_payload = bytes((1, 2, 255)) + b"task"
         encoded = encode_message(message_type=MessageType.AGENT, payload=bad_payload)
-        decoded = decode_message(encoded)
         with self.assertRaisesRegex(DecodingError, "Unknown instruction code"):
-            decode_compact_payload(decoded.payload)
+            decode_message(encoded)
+
+    def test_reject_reserved_flag_bits_non_zero(self):
+        payload = encode_compact_payload(
+            src=AgentCode.A1,
+            dst=AgentCode.A2,
+            instruction=InstructionCode.HANDOFF,
+            task="abc",
+        )
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        raw = self._decode_raw(encoded)
+        version, mt, flags, caps, plen, crc = struct.unpack(">BBBHHI", raw[:HEADER_SIZE])
+        tampered_header = struct.pack(">BBBHHI", version, mt, flags | 0x80, caps, plen, crc)
+        tampered = tampered_header + raw[HEADER_SIZE:]
+        with self.assertRaisesRegex(DecodingError, "Reserved flag bits"):
+            decode_message(self._encode_raw(tampered))
+
+    def test_reject_oversized_encoded_transport_before_decode(self):
+        with self.assertRaisesRegex(DecodingError, "Encoded transport exceeds"):
+            decode_message("A" * 17, max_message_bytes=12)
 
 
 if __name__ == "__main__":
