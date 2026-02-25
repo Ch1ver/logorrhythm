@@ -23,6 +23,7 @@ from .spec import (
 
 # version:u8, msg_type:u8, flags:u8, capabilities:u16, payload_len:u16, crc32:u32
 _HEADER_FORMAT = ">BBBHHI"
+_SUPPORTED_FLAG_BITS = FLAG_COMPRESSED
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,8 @@ def encode_message(
         raise EncodingError("Payload must be bytes")
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
         raise EncodingError("Reserved capability bits must be zero")
+    if flags & ~_SUPPORTED_FLAG_BITS:
+        raise EncodingError("Reserved flag bits must be zero")
 
     payload = bytes(payload)
     if flags & FLAG_COMPRESSED:
@@ -144,6 +147,10 @@ def encode_message(
 
 def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES) -> DecodedMessage:
     """Decode base64url text into a validated canonical message."""
+    max_encoded_chars = (4 * max_message_bytes + 2) // 3
+    if len(encoded) > max_encoded_chars:
+        raise DecodingError("Encoded transport exceeds max_message_bytes")
+
     message = _from_base64url(encoded)
 
     if len(message) > max_message_bytes:
@@ -159,6 +166,8 @@ def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES) 
         raise DecodingError(f"Unsupported protocol version: {version}")
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
         raise DecodingError("Reserved capability bits must be zero")
+    if flags & ~_SUPPORTED_FLAG_BITS:
+        raise DecodingError("Reserved flag bits must be zero")
     if flags & FLAG_COMPRESSED:
         raise DecodingError("Compressed messages are not supported in v0.0.2")
 
@@ -174,6 +183,9 @@ def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES) 
         message_type = MessageType(msg_type_raw)
     except ValueError as exc:
         raise DecodingError(f"Unknown message type: {msg_type_raw}") from exc
+
+    if message_type is MessageType.AGENT:
+        decode_compact_payload(payload)
 
     return DecodedMessage(
         version=version,

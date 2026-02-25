@@ -21,6 +21,14 @@ class V003DashboardTests(unittest.TestCase):
         self.assertIn("Hyperdrive v0.0.3 Framework", report)
         self.assertIn("Shields (security hardening status)", report)
 
+    def test_reject_zero_messages_per_agent(self):
+        with self.assertRaisesRegex(ValueError, "messages_per_agent"):
+            build_v003_dashboard(agent_counts=(8,), messages_per_agent=0, seed=2)
+
+    def test_reject_non_positive_agent_counts(self):
+        with self.assertRaisesRegex(ValueError, "agent_counts"):
+            build_v003_dashboard(agent_counts=(8, 0), messages_per_agent=5, seed=2)
+
 
 if __name__ == "__main__":
     unittest.main()
