@@ -16,6 +16,8 @@ jobs:
         run: python -m unittest
       - name: Sync benchmark table
         run: python -m logorrhythm.cli --sync-benchmark-table
+      - name: Generate benchmark graphs
+        run: python -m logorrhythm.cli --generate-graphs
       - name: Benchmark regression gate
         run: |
-          git diff --exit-code README.md
+          git diff --exit-code README.md docs/graphs

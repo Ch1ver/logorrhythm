@@ -1,5 +1,6 @@
 # LOGORRHYTHM SPECIFICATION — v0.0.3
 
+> Versioning note: package releases (for example v0.0.5) can ship implementation and testing improvements without changing the wire protocol. The canonical wire protocol version remains `PROTOCOL_VERSION = 1` unless a breaking framing change is introduced.
 ## Layer 1
 
 ### Envelope

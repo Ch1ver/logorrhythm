@@ -6,7 +6,7 @@ from logorrhythm.fault_tolerance import Checkpoint, CheckpointStore
 from logorrhythm.identity import issue_challenge, prove_identity, verify_identity
 from logorrhythm.streaming import encode_stream, iter_stream_text
 from logorrhythm.topology import broadcast, mesh, multicast, pipeline
-from logorrhythm.v004 import compute_v004_metrics, generate_graphs
+from logorrhythm.v004 import compute_v004_metrics
 
 
 class PublicApiTests(unittest.TestCase):
@@ -60,9 +60,6 @@ class BenchmarkOutputTests(unittest.TestCase):
         self.assertGreater(metrics["throughput_gain"], 38.87)
         self.assertGreater(metrics["latency_improvement"], 25.64)
 
-    def test_graph_generation(self):
-        generated = generate_graphs()
-        self.assertEqual(len(generated), 3)
 
 
 if __name__ == "__main__":
