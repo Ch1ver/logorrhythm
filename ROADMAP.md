@@ -22,6 +22,8 @@
 - Partial-result delivery with deterministic reassembly.
 - Backpressure signaling and timeout semantics.
 - Transport adapters beyond in-memory simulation (first practical inter-agent lane).
+- Scale dashboard with latency/throughput/byte metrics for reportable agent-cohort performance.
+- Security hardening baseline (repo shields + signed transport planning).
 
 ### v0.0.3 release gate (hard requirement)
 

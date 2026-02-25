@@ -43,6 +43,24 @@ v0.0.2 introduces a first compressed primitive sketch with 10 operations:
 
 See `SPEC.md` for formal encoding and `ROADMAP.md` for progression.
 
+## v0.0.3 planning dashboard (new)
+
+We now ship a simulation-driven iteration dashboard that reports multi-agent communication improvements against the v0.0.1 baseline.
+
+```bash
+python -m logorrhythm.cli --v003-dashboard
+```
+
+The dashboard includes:
+
+- scale tiers (8/64/512 agents by default),
+- total volume and byte footprint,
+- average encode/decode latency,
+- p95 proxy timing,
+- throughput gains,
+- prioritized v0.0.3 next-step recommendations,
+- security "shield" posture and hardening guidance.
+
 ## v0.0.1 -> v0.0.2 benchmark check
 
 v0.0.3 planning now includes an explicit benchmark gate. We ship only if we can demonstrate measurable communication footprint improvements over the prior version.
@@ -61,6 +79,10 @@ Short answer: partially.
 - **Not built in yet:** real networked transport adapters (streaming sockets/HTTP/WebSocket/etc.), sequence-aware delivery, and backpressure controls.
 
 That gap is intentionally the v0.0.3 focus.
+
+## Security posture (hull + shields)
+
+Current hull protections are protocol-level integrity and strict validation. See `SECURITY.md` for defense-in-depth recommendations for source control, CI policies, and future signed transport mode.
 
 ## Captain's log (FTL lane)
 
