@@ -1,4 +1,4 @@
-"""In-memory agent registry for handshake/discovery."""
+"""In-memory agent registry for handshake/discovery. [EXPERIMENTAL / not hot-path]."""
 
 from __future__ import annotations
 

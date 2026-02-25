@@ -52,8 +52,13 @@ class Layer2Tests(unittest.TestCase):
 class BenchmarkSyncTests(unittest.TestCase):
     def test_rows_include_current_release(self):
         rows = compute_rows()
-        versions = [r.version for r in rows]
-        self.assertEqual(versions, ["v0.0.1", "v0.0.2", "v0.0.3", "v0.0.4", "v0.0.5"])
+        transports = [r.transport for r in rows]
+        self.assertEqual(transports, [
+            "JSON baseline",
+            "Logorrhythm base64",
+            "Logorrhythm binary",
+            "Logorrhythm adaptive repeated exchange",
+        ])
 
     def test_sync_updates_readme_marked_section(self):
         table = sync_readme_benchmark_table()

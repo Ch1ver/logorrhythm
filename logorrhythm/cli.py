@@ -6,7 +6,14 @@ import argparse
 from pathlib import Path
 
 from ._demo_core import run_demo
-from .benchmark import benchmark_decode_cpu_before_after, benchmark_encode_decode_throughput, benchmark_tokens, benchmark_v001_vs_v002
+from .benchmark import (
+    benchmark_adaptive_repeated_exchange_percent,
+    benchmark_decode_cpu_before_after,
+    benchmark_encode_decode_throughput,
+    benchmark_memory_allocations,
+    benchmark_tokens,
+    benchmark_v001_vs_v002,
+)
 from .benchmark_sync import sync_graph_artifacts, sync_readme_benchmark_table
 from .encoding import decode_message, render_message_human
 from .observer import emit_event
@@ -16,7 +23,7 @@ from .v003 import build_v003_dashboard
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LOGORRHYTHM command line interface")
     parser.add_argument("--demo", action="store_true", help="Run the v0.0.2 demo")
-    parser.add_argument("--benchmark", action="store_true", help="Compare v0.0.1 baseline against v0.0.2 transport")
+    parser.add_argument("--benchmark", action="store_true", help="Run transport and hot-path benchmarks")
     parser.add_argument("--v003-dashboard", action="store_true", help="Run the v0.0.3 scale simulation and print dashboard markdown")
     parser.add_argument("--sync-benchmark-table", action="store_true", help="Recompute benchmark table and write to README")
     parser.add_argument("--generate-graphs", action="store_true", help="Generate deterministic graph artifacts in docs/graphs")
@@ -33,6 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("token-benchmark", help="Measure token cost across transports")
     return parser
+
+
+def _print_token_table() -> None:
+    report = benchmark_tokens(runs=5)
+    print(f"Token benchmark report (avg over {report.runs} runs)")
+    print("| Scenario | JSON | Base64 | Adaptive | Base64 Savings | Adaptive Savings |")
+    print("|---|---:|---:|---:|---:|---:|")
+    for s in report.scenarios:
+        print(
+            f"| {s.name} | {s.json_tokens} | {s.base64_tokens} | {s.adaptive_tokens} | "
+            f"{s.base64_savings_percent:.2f}% | {s.adaptive_savings_percent:.2f}% |"
+        )
+    print(
+        f"Averages: json={report.avg_json_tokens:.2f}, "
+        f"base64={report.avg_base64_tokens:.2f}, adaptive={report.avg_adaptive_tokens:.2f}"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         return 0
 
+    if args.command == "token-benchmark":
+        _print_token_table()
+        return 0
+
     if args.demo:
         run_demo()
         return 0
@@ -72,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
         summary = benchmark_v001_vs_v002()
         tp = benchmark_encode_decode_throughput()
         eager, lazy = benchmark_decode_cpu_before_after()
+        memory = benchmark_memory_allocations()
+        adaptive_gain = benchmark_adaptive_repeated_exchange_percent()
         print("Benchmark JSON vs Logorrhythm base64 vs Logorrhythm binary")
         for m in summary.scenarios:
             print(
@@ -83,17 +112,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"encode throughput: {tp.encode_messages_per_sec:.0f} msg/s")
         print(f"decode throughput: {tp.decode_messages_per_sec:.0f} msg/s")
         print(f"decode CPU eager->{eager:.4f}s lazy->{lazy:.4f}s")
+        print(f"memory avg bytes/message: {memory.avg_bytes_per_message:.2f}")
+        print(f"memory avg allocations/message: {memory.avg_allocations_per_message:.4f}")
+        print(f"adaptive repeated exchange gain: {adaptive_gain:.2f}%")
         return 0
-    if args.command == "token-benchmark":
-        t = benchmark_tokens()
-        print(f"json_tokens={t.json_tokens}")
-        print(f"base64_tokens={t.base64_tokens}")
-        print(f"adaptive_tokens={t.adaptive_tokens}")
-        if t.json_tokens:
-            print(f"base64_savings={(1 - (t.base64_tokens / t.json_tokens)) * 100:.2f}%")
-            print(f"adaptive_savings={(1 - (t.adaptive_tokens / t.json_tokens)) * 100:.2f}%")
-        return 0
-
     if args.v003_dashboard:
         print(build_v003_dashboard().to_markdown())
         return 0

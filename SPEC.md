@@ -1,15 +1,29 @@
-# LOGORRHYTHM SPECIFICATION — v0.0.5 package / protocol v1+v2
+# LOGORRHYTHM SPECIFICATION — v0.0.6 package / protocol v1+v2
 
 ## Versioning model
 
-- Package version remains **0.0.5**.
+- Package version is **0.0.6**.
 - Wire protocol versions are independent:
   - `PROTOCOL_VERSION_LEGACY = 1` (compact v0.0.2-compatible payload)
   - `PROTOCOL_VERSION = 2` (agent-capable envelope)
 
-## Header structure (shared framing)
+## Transport model
 
-Binary frame then base64url transport:
+- **Binary-first default:** `encode_message(...)` returns raw bytes.
+- **Compatibility mode:** `encode_message(..., transport_base64=True)` returns base64url transport string.
+
+## Header structure
+
+### Binary-first header (compacted)
+
+- `version: u8`
+- `control: u8` (`message_type` low 4 bits + `flags` high 4 bits)
+- `capabilities: u16`
+- `payload_len: u16`
+- `crc32: u32`
+- `payload: bytes`
+
+### Base64 compatibility header (legacy framing)
 
 - `version: u8`
 - `message_type: u8`
@@ -30,8 +44,6 @@ Binary frame then base64url transport:
 
 ### Protocol v2 (agent envelope)
 
-Length-prefixed UTF-8 strings and metadata:
-
 - `source_id: len(u8)+bytes`
 - `destination_id: len(u8)+bytes`
 - `instruction: len(u8)+bytes`
@@ -40,64 +52,18 @@ Length-prefixed UTF-8 strings and metadata:
 - `task: len(u16)+bytes`
 - `signature: len(u8)+hex(hmac_sha256)` (optional unless secure mode)
 
+## Decode model
+
+- Decode uses a zero-copy payload view (`memoryview`) on hot path.
+- Explicit bytes materialization remains available via `DecodedMessage.payload`.
+
 ## Security model
 
-- `secure_mode=False` by default to preserve benchmark path behavior.
-- When secure mode is enabled:
-  - sender signs `header+payload-core` with shared secret (HMAC SHA256),
-  - receiver verifies signature,
-  - missing or invalid signatures are rejected,
-  - nonce replay is rejected through receiver-side nonce store.
-
-## Correlation model
-
-- `correlation_id` is auto-assigned UUID4 on message creation when omitted.
-- Response handling must echo request correlation ID.
-- Mismatches are rejected.
-
-## Handshake and discovery
-
-Supported instruction strings:
-
-- `WHOAMI`
-- `CAPABILITIES`
-- `HEARTBEAT`
-
-Flow:
-1. Exchange `WHOAMI`.
-2. Exchange `CAPABILITIES`.
-3. Register peer in in-memory registry.
-4. Periodically update `last_seen` via heartbeat.
-5. Remove stale agents after timeout.
-
-## Capability negotiation
-
-Bitmask capabilities:
-
-- `streaming`
-- `secure_envelope`
-- `adaptive_aliasing`
-- `heartbeat`
-- `transport_ws`
-
-Negotiation result is the bitwise intersection of local/peer capabilities; unsupported features must fall back safely.
-
-## Observer plane logging
-
-JSON-lines event shape:
-
-- `timestamp`
-- `correlation_id`
-- `source_id`
-- `destination_id`
-- `instruction`
-- `payload_size_bytes`
-- `total_size_bytes`
-- `latency_ms`
-- `status`
-- `signature_verified`
+- `secure_mode=False` by default.
+- When enabled, sender signs payload core with HMAC SHA256, receiver verifies signature and nonce replay.
 
 ## Benchmark hygiene
 
-- Benchmark code path remains untouched (`benchmark_v001_vs_v002`).
-- New security and envelope features are opt-in and disabled by default.
+- CLI benchmarks are explicit (`--benchmark`, `token-benchmark`).
+- Test runs remain side-effect free (no README/graph mutation).
+- Graph generation is deterministic and CI-safe.

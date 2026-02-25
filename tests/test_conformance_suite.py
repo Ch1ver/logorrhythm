@@ -140,6 +140,22 @@ class ConformanceSuiteTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("inspect-me", buf.getvalue())
 
+
+    def test_token_benchmark_cli_table(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from logorrhythm.cli import main
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = main(["token-benchmark"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("Token benchmark report", out)
+        self.assertIn("single_control", out)
+        self.assertIn("nested_payload", out)
+
     def test_structured_log_required_fields(self):
         event = emit_event(
             correlation_id="cid",

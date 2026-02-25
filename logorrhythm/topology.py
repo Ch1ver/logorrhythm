@@ -1,4 +1,4 @@
-"""Swarm topology one-byte opcode extensions."""
+"""Swarm topology one-byte opcode extensions. [EXPERIMENTAL / not hot-path]."""
 
 from __future__ import annotations
 
