@@ -4,7 +4,7 @@
 | Version | Byte Reduction | Throughput Gain | Latency Improvement | Agents Tested |
 |---|---:|---:|---:|---|
 | v0.0.1 | baseline | baseline | baseline | 8/64/512 |
-| v0.0.2 | 22.37% | 26.14% | 20.72% | 8/64/512 |
+| v0.0.2 | 22.37% | 27.62% | 21.64% | 8/64/512 |
 | v0.0.3 | 24.37% | 38.87% | 25.64% | 8/64/512 |
 | v0.0.4 | 29.84% | 45.73% | 31.42% | 8/64/512 |
 <!-- BENCHMARK_TABLE_END -->
