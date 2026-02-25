@@ -10,7 +10,7 @@
 | v0.0.5 | 29.84% | 45.73% | 31.42% | 8/64/512 |
 <!-- LOGORRHYTHM_BENCHMARK_TABLE_END -->
 
-LOGORRHYTHM is a two-layer protocol and execution language for AI-agent speed.
+LOGORRHYTHM is a compact protocol and execution substrate for multi-agent communication.
 
 ## Install (PyPI)
 
@@ -21,10 +21,35 @@ pip install logorrhythm
 ## Minimal API
 
 ```python
-from logorrhythm import encode, decode, send, receive
+from logorrhythm import encode, decode
 
-wire = send(task="handoff dependency graph")
-assert receive(wire) == "handoff dependency graph"
+wire = encode(task="handoff dependency graph", src="agent-A", dst="agent-B")
+assert decode(wire) == "handoff dependency graph"
+```
+
+## Architecture (v0.0.5 package, mixed protocol support)
+
+```
++----------------------+      +-----------------------+
+|  API / CLI           | ---> |  Encoding Pipeline    |
+|  - encode/decode     |      |  - v1 legacy compact  |
+|  - inspect/tap/replay|      |  - v2 string envelope |
++----------+-----------+      +-----------+-----------+
+           |                              |
+           v                              v
++----------------------+      +-----------------------+
+| Handshake/Registry   |      | Security + Observer   |
+| - WHOAMI/CAPABILITIES|      | - correlation_id      |
+| - HEARTBEAT tracking |      | - HMAC + nonce guard  |
++----------+-----------+      +-----------+-----------+
+           |                              |
+           +--------------+---------------+
+                          v
+                 +------------------+
+                 | Transport Layer  |
+                 | base/ws_client   |
+                 | ws_server        |
+                 +------------------+
 ```
 
 ## v0.0.5 benchmark graphs
@@ -32,15 +57,6 @@ assert receive(wire) == "handoff dependency graph"
 ![Byte reduction trend](docs/graphs/byte_reduction_line.svg)
 ![Throughput gain by scale](docs/graphs/throughput_scale_bar.svg)
 ![Latency distribution p50/p95](docs/graphs/latency_distribution.svg)
-
-## New in v0.0.4 systems
-
-- Adaptive compression dictionary for repeated patterns (`logorrhythm.adaptive`).
-- Streaming protocol primitives for start/chunk/end delivery (`logorrhythm.streaming`).
-- Swarm topology primitives using one-byte opcodes: broadcast, multicast, pipeline, mesh (`logorrhythm.topology`).
-- Fault-tolerance checkpoint and reassignment flow (`logorrhythm.fault_tolerance`).
-- Real WebSocket transport adapter + benchmark against simulated transport (`logorrhythm.transport_ws`).
-- Shared-secret identity handshake with compact session proof (`logorrhythm.identity`).
 
 ## Automation contract
 
@@ -50,6 +66,7 @@ Tests are side-effect free and do not write README or graph artifacts. Run bench
 
 ```bash
 python -m unittest
-python -m logorrhythm.cli --sync-benchmark-table
-python -m logorrhythm.cli --generate-graphs
+python -m logorrhythm.cli inspect <encoded_message>
+python -m logorrhythm.cli tap --ws
+python -m logorrhythm.cli replay <logfile>
 ```

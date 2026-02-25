@@ -1,17 +1,22 @@
-"""Canonical binary encoding and base64url transport helpers."""
+"""Canonical binary encoding, transport helpers, and v2 agent envelope support."""
 
 from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
+import hmac
 import json
+import re
 import struct
+import uuid
 from dataclasses import dataclass
 
 from .exceptions import DecodingError, EncodingError
 from .spec import (
     ALLOWED_CAPABILITY_BITS,
     FLAG_COMPRESSED,
+    FLAG_SIGNED,
     HEADER_SIZE,
     MAX_MESSAGE_BYTES,
     PAYLOAD_MIN_SIZE,
@@ -19,11 +24,12 @@ from .spec import (
     InstructionCode,
     MessageType,
     PROTOCOL_VERSION,
+    PROTOCOL_VERSION_LEGACY,
 )
 
-# version:u8, msg_type:u8, flags:u8, capabilities:u16, payload_len:u16, crc32:u32
 _HEADER_FORMAT = ">BBBHHI"
-_SUPPORTED_FLAG_BITS = FLAG_COMPRESSED
+_SUPPORTED_FLAG_BITS = FLAG_COMPRESSED | FLAG_SIGNED
+_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,255}$")
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,17 @@ class CompactPayload:
     dst: AgentCode
     instruction: InstructionCode
     task: str
+
+
+@dataclass(frozen=True)
+class AgentEnvelopeV2:
+    source_id: str
+    destination_id: str
+    instruction: str
+    task: str
+    correlation_id: str
+    nonce: int
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -44,8 +61,31 @@ class DecodedMessage:
     payload: bytes
 
 
+@dataclass(frozen=True)
+class SecurityConfig:
+    shared_secret: bytes = b""
+    secure_mode: bool = False
+
+
+class ReplayNonceStore:
+    """In-memory replay protector with deterministic behavior for testable decode."""
+
+    def __init__(self) -> None:
+        self._seen: set[tuple[str, int]] = set()
+
+    def check_and_mark(self, source_id: str, nonce: int) -> bool:
+        key = (source_id, nonce)
+        if key in self._seen:
+            return False
+        self._seen.add(key)
+        return True
+
+
+_DEFAULT_NONCE_STORE = ReplayNonceStore()
+
+
 def encode_compact_payload(*, src: AgentCode, dst: AgentCode, instruction: InstructionCode, task: str) -> bytes:
-    """Encode positional compact payload: src:u8,dst:u8,instruction:u8,task:utf8."""
+    """Encode legacy compact payload: src:u8,dst:u8,instruction:u8,task:utf8."""
     if not isinstance(src, AgentCode):
         raise EncodingError("src must be an AgentCode")
     if not isinstance(dst, AgentCode):
@@ -54,12 +94,87 @@ def encode_compact_payload(*, src: AgentCode, dst: AgentCode, instruction: Instr
         raise EncodingError("instruction must be an InstructionCode")
     if not isinstance(task, str):
         raise EncodingError("task must be a UTF-8 string")
+    return bytes((int(src), int(dst), int(instruction))) + task.encode("utf-8")
+
+
+def _validate_agent_id(agent_id: str, field_name: str) -> None:
+    if not isinstance(agent_id, str) or not agent_id:
+        raise EncodingError(f"{field_name} must be a non-empty UTF-8 string")
+    if not _AGENT_ID_RE.match(agent_id):
+        raise EncodingError(f"malformed ID in {field_name}")
+
+
+def _pack_sized_text(value: str, field_name: str) -> bytes:
+    raw = value.encode("utf-8")
+    if len(raw) > 255:
+        raise EncodingError(f"{field_name} exceeds 255 bytes")
+    return bytes((len(raw),)) + raw
+
+
+def _compute_hmac(*, data: bytes, shared_secret: bytes) -> str:
+    return hmac.new(shared_secret, data, hashlib.sha256).hexdigest()
+
+
+def encode_agent_payload_v2(
+    *,
+    source_id: str,
+    destination_id: str,
+    instruction: str,
+    task: str,
+    correlation_id: str | None = None,
+    nonce: int | None = None,
+    shared_secret: bytes = b"",
+    secure_mode: bool = False,
+) -> bytes:
+    """Encode v2 agent payload with string addressing, correlation, and optional HMAC."""
+    _validate_agent_id(source_id, "source_id")
+    _validate_agent_id(destination_id, "destination_id")
+    if not destination_id:
+        raise EncodingError("missing destination")
+    if not isinstance(task, str):
+        raise EncodingError("task must be a UTF-8 string")
+    if not isinstance(instruction, str) or not instruction:
+        raise EncodingError("instruction must be a non-empty string")
+
+    cid = correlation_id or str(uuid.uuid4())
+    try:
+        uuid.UUID(cid, version=4)
+    except ValueError as exc:
+        raise EncodingError("correlation_id must be UUID4") from exc
+
+    msg_nonce = (uuid.uuid4().int & ((1 << 64) - 1)) if nonce is None else int(nonce)
+    if msg_nonce < 0:
+        raise EncodingError("nonce must be non-negative")
+
     task_bytes = task.encode("utf-8")
-    return bytes((int(src), int(dst), int(instruction))) + task_bytes
+    if len(task_bytes) > 0xFFFF:
+        raise EncodingError("task exceeds 65535 bytes")
+
+    core = b"".join(
+        (
+            _pack_sized_text(source_id, "source_id"),
+            _pack_sized_text(destination_id, "destination_id"),
+            _pack_sized_text(instruction, "instruction"),
+            _pack_sized_text(cid, "correlation_id"),
+            struct.pack(">Q", msg_nonce),
+            struct.pack(">H", len(task_bytes)),
+            task_bytes,
+        )
+    )
+
+    signature = ""
+    if secure_mode:
+        if not shared_secret:
+            raise EncodingError("secure_mode requires shared_secret")
+        signature = _compute_hmac(data=core, shared_secret=shared_secret)
+
+    sig_bytes = signature.encode("ascii")
+    if len(sig_bytes) > 255:
+        raise EncodingError("signature too long")
+    return core + bytes((len(sig_bytes),)) + sig_bytes
 
 
 def decode_compact_payload(payload: bytes) -> CompactPayload:
-    """Decode compact payload into a typed view."""
     if len(payload) < PAYLOAD_MIN_SIZE:
         raise DecodingError("Payload too short for compact format")
 
@@ -85,8 +200,97 @@ def decode_compact_payload(payload: bytes) -> CompactPayload:
         task = task_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise DecodingError("Task segment is not valid UTF-8") from exc
-
     return CompactPayload(src=src, dst=dst, instruction=instruction, task=task)
+
+
+def _decode_sized_text(payload: bytes, offset: int, label: str) -> tuple[str, int]:
+    if offset >= len(payload):
+        raise DecodingError(f"invalid length for {label}")
+    size = payload[offset]
+    offset += 1
+    end = offset + size
+    if end > len(payload):
+        raise DecodingError(f"invalid length for {label}")
+    try:
+        value = payload[offset:end].decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise DecodingError(f"malformed ID in {label}") from exc
+    return value, end
+
+
+def decode_agent_payload_v2(
+    payload: bytes,
+    *,
+    security: SecurityConfig | None = None,
+    nonce_store: ReplayNonceStore | None = None,
+) -> AgentEnvelopeV2:
+    """Decode and validate v2 agent payload."""
+    security = security or SecurityConfig()
+    nonce_store = nonce_store or _DEFAULT_NONCE_STORE
+
+    offset = 0
+    source_id, offset = _decode_sized_text(payload, offset, "source_id")
+    destination_id, offset = _decode_sized_text(payload, offset, "destination_id")
+    instruction, offset = _decode_sized_text(payload, offset, "instruction")
+    correlation_id, offset = _decode_sized_text(payload, offset, "correlation_id")
+
+    if not destination_id:
+        raise DecodingError("missing destination")
+    if not _AGENT_ID_RE.match(source_id):
+        raise DecodingError("malformed ID in source_id")
+    if not _AGENT_ID_RE.match(destination_id):
+        raise DecodingError("malformed ID in destination_id")
+
+    try:
+        uuid.UUID(correlation_id, version=4)
+    except ValueError as exc:
+        raise DecodingError("missing correlation_id") from exc
+
+    if offset + 8 + 2 > len(payload):
+        raise DecodingError("Payload too short for nonce/task")
+
+    nonce = struct.unpack(">Q", payload[offset : offset + 8])[0]
+    offset += 8
+
+    task_len = struct.unpack(">H", payload[offset : offset + 2])[0]
+    offset += 2
+    if offset + task_len + 1 > len(payload):
+        raise DecodingError("invalid length for task")
+
+    task_bytes = payload[offset : offset + task_len]
+    offset += task_len
+    try:
+        task = task_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise DecodingError("task is not valid UTF-8") from exc
+
+    sig_len = payload[offset]
+    offset += 1
+    if offset + sig_len != len(payload):
+        raise DecodingError("invalid length for signature")
+    signature = payload[offset : offset + sig_len].decode("ascii")
+
+    signed_region = payload[: offset - 1]
+
+    if security.secure_mode:
+        if not signature:
+            raise DecodingError("missing signature")
+        expected = _compute_hmac(data=signed_region, shared_secret=security.shared_secret)
+        if not hmac.compare_digest(signature, expected):
+            raise DecodingError("invalid signature")
+
+    if not nonce_store.check_and_mark(source_id, nonce):
+        raise DecodingError("replayed nonce")
+
+    return AgentEnvelopeV2(
+        source_id=source_id,
+        destination_id=destination_id,
+        instruction=instruction,
+        task=task,
+        correlation_id=correlation_id,
+        nonce=nonce,
+        signature=signature,
+    )
 
 
 def _to_base64url(raw: bytes) -> str:
@@ -101,119 +305,76 @@ def _from_base64url(text: str) -> bytes:
         raise DecodingError("Invalid base64url transport") from exc
 
 
-def encode_message(
-    *,
-    message_type: MessageType,
-    payload: bytes,
-    flags: int = 0,
-    capabilities: int = 0,
-    version: int = PROTOCOL_VERSION,
-    max_message_bytes: int = MAX_MESSAGE_BYTES,
-) -> str:
-    """Encode a canonical binary message and return base64url transport text."""
-    if version != PROTOCOL_VERSION:
+def encode_message(*, message_type: MessageType, payload: bytes, flags: int = 0, capabilities: int = 0, version: int = PROTOCOL_VERSION_LEGACY, max_message_bytes: int = MAX_MESSAGE_BYTES) -> str:
+    if version not in (PROTOCOL_VERSION_LEGACY, PROTOCOL_VERSION):
         raise EncodingError(f"Unsupported protocol version for encoder: {version}")
-    if not isinstance(payload, (bytes, bytearray)):
-        raise EncodingError("Payload must be bytes")
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
         raise EncodingError("Reserved capability bits must be zero")
     if flags & ~_SUPPORTED_FLAG_BITS:
         raise EncodingError("Reserved flag bits must be zero")
-
     payload = bytes(payload)
     if flags & FLAG_COMPRESSED:
         raise EncodingError("Compression flag is set but compression is not implemented")
-
-    payload_length = len(payload)
-    if payload_length > 0xFFFF:
-        raise EncodingError("Payload too large for v0.0.2 length field")
-
+    if len(payload) > 0xFFFF:
+        raise EncodingError("Payload too large for length field")
     crc32 = binascii.crc32(payload) & 0xFFFFFFFF
-    header = struct.pack(
-        _HEADER_FORMAT,
-        version,
-        int(message_type),
-        flags,
-        capabilities,
-        payload_length,
-        crc32,
-    )
-    message = header + payload
-    if len(message) > max_message_bytes:
+    header = struct.pack(_HEADER_FORMAT, version, int(message_type), flags, capabilities, len(payload), crc32)
+    msg = header + payload
+    if len(msg) > max_message_bytes:
         raise EncodingError("Encoded message exceeds max_message_bytes")
+    return _to_base64url(msg)
 
-    return _to_base64url(message)
 
-
-def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES) -> DecodedMessage:
-    """Decode base64url text into a validated canonical message."""
+def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES, security: SecurityConfig | None = None, nonce_store: ReplayNonceStore | None = None) -> DecodedMessage:
     max_encoded_chars = (4 * max_message_bytes + 2) // 3
     if len(encoded) > max_encoded_chars:
         raise DecodingError("Encoded transport exceeds max_message_bytes")
-
     message = _from_base64url(encoded)
-
     if len(message) > max_message_bytes:
         raise DecodingError("Message exceeds max_message_bytes")
     if len(message) < HEADER_SIZE:
         raise DecodingError("Message too short for header")
-
-    version, msg_type_raw, flags, capabilities, payload_length, checksum = struct.unpack(
-        _HEADER_FORMAT, message[:HEADER_SIZE]
-    )
-
-    if version != PROTOCOL_VERSION:
+    version, msg_type_raw, flags, capabilities, payload_length, checksum = struct.unpack(_HEADER_FORMAT, message[:HEADER_SIZE])
+    if version not in (PROTOCOL_VERSION_LEGACY, PROTOCOL_VERSION):
         raise DecodingError(f"Unsupported protocol version: {version}")
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
         raise DecodingError("Reserved capability bits must be zero")
     if flags & ~_SUPPORTED_FLAG_BITS:
         raise DecodingError("Reserved flag bits must be zero")
     if flags & FLAG_COMPRESSED:
-        raise DecodingError("Compressed messages are not supported in v0.0.2")
-
+        raise DecodingError("Compressed messages are not supported")
     payload = message[HEADER_SIZE:]
     if len(payload) != payload_length:
         raise DecodingError("payload_length mismatch")
-
-    computed = binascii.crc32(payload) & 0xFFFFFFFF
-    if computed != checksum:
+    if (binascii.crc32(payload) & 0xFFFFFFFF) != checksum:
         raise DecodingError("CRC32 checksum mismatch")
-
     try:
         message_type = MessageType(msg_type_raw)
     except ValueError as exc:
         raise DecodingError(f"Unknown message type: {msg_type_raw}") from exc
 
     if message_type is MessageType.AGENT:
-        decode_compact_payload(payload)
+        if version == PROTOCOL_VERSION_LEGACY:
+            decode_compact_payload(payload)
+        else:
+            decode_agent_payload_v2(payload, security=security, nonce_store=nonce_store)
 
-    return DecodedMessage(
-        version=version,
-        message_type=message_type,
-        flags=flags,
-        capabilities=capabilities,
-        payload_length=payload_length,
-        payload=payload,
-    )
+    return DecodedMessage(version, message_type, flags, capabilities, payload_length, payload)
 
 
-def render_message_human(decoded: DecodedMessage) -> str:
-    """Non-canonical rendering for logs/debugging."""
-    compact = decode_compact_payload(decoded.payload)
-    return json.dumps(
-        {
-            "version": decoded.version,
-            "message_type": decoded.message_type.name,
-            "flags": decoded.flags,
-            "capabilities": decoded.capabilities,
-            "payload_length": decoded.payload_length,
-            "payload": {
-                "src": compact.src.name,
-                "dst": compact.dst.name,
-                "instruction": compact.instruction.name,
-                "task": compact.task,
-            },
-        },
-        indent=2,
-        sort_keys=True,
-    )
+def render_message_human(decoded: DecodedMessage, *, security: SecurityConfig | None = None) -> str:
+    if decoded.version == PROTOCOL_VERSION_LEGACY:
+        compact = decode_compact_payload(decoded.payload)
+        body = {"src": compact.src.name, "dst": compact.dst.name, "instruction": compact.instruction.name, "task": compact.task}
+    else:
+        agent = decode_agent_payload_v2(decoded.payload, security=security, nonce_store=ReplayNonceStore())
+        body = {
+            "source_id": agent.source_id,
+            "destination_id": agent.destination_id,
+            "instruction": agent.instruction,
+            "task": agent.task,
+            "correlation_id": agent.correlation_id,
+            "nonce": agent.nonce,
+            "signature_present": bool(agent.signature),
+        }
+    return json.dumps({"version": decoded.version, "message_type": decoded.message_type.name, "flags": decoded.flags, "capabilities": decoded.capabilities, "payload_length": decoded.payload_length, "payload": body}, indent=2, sort_keys=True)

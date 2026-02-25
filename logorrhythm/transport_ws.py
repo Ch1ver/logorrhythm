@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 
 from .api import decode, encode
+from .transport.ws_client import WebSocketClientTransport
+from .transport.ws_server import serve_echo
 
 try:
     import websockets
@@ -27,27 +29,23 @@ class TransportDelta:
 async def exchange_once(*, message: str = "ping", port: int = 8765) -> str:
     if websockets is None:
         raise RuntimeError("websockets dependency is required for WebSocket transport")
-
-    async def handler(ws):
-        incoming = await ws.recv()
-        await ws.send(incoming)
-
-    server = await websockets.serve(handler, "127.0.0.1", port)
+    server = await serve_echo("127.0.0.1", port)
     try:
-        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
-            payload = encode(task=message)
-            await ws.send(payload)
-            response = await ws.recv()
-            return decode(response)
+        ws = await websockets.connect(f"ws://127.0.0.1:{port}")
+        transport = WebSocketClientTransport(ws)
+        payload = encode(task=message)
+        await transport.send(payload)
+        response = await transport.receive()
+        await ws.close()
+        return decode(response)
     finally:
         server.close()
         await server.wait_closed()
 
 
-def benchmark_transport(*, repeats: int = 20) -> TransportDelta:
+async def _benchmark_transport_async(repeats: int) -> TransportDelta:
     simulated_samples = []
     websocket_samples = []
-
     for _ in range(repeats):
         s0 = time.perf_counter_ns()
         packed = encode(task="bench")
@@ -55,10 +53,14 @@ def benchmark_transport(*, repeats: int = 20) -> TransportDelta:
         simulated_samples.append((time.perf_counter_ns() - s0) / 1_000_000)
 
         w0 = time.perf_counter_ns()
-        asyncio.run(exchange_once(message="bench"))
+        await exchange_once(message="bench")
         websocket_samples.append((time.perf_counter_ns() - w0) / 1_000_000)
 
     return TransportDelta(
         simulated_latency_ms=sum(simulated_samples) / len(simulated_samples),
         websocket_latency_ms=sum(websocket_samples) / len(websocket_samples),
     )
+
+
+def benchmark_transport(*, repeats: int = 20) -> TransportDelta:
+    return asyncio.run(_benchmark_transport_async(repeats))
