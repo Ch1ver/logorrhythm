@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from ._demo_core import run_demo
-from .benchmark import benchmark_v001_vs_v002
+from .benchmark import benchmark_decode_cpu_before_after, benchmark_encode_decode_throughput, benchmark_tokens, benchmark_v001_vs_v002
 from .benchmark_sync import sync_graph_artifacts, sync_readme_benchmark_table
 from .encoding import decode_message, render_message_human
 from .observer import emit_event
@@ -30,6 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     replay_cmd = sub.add_parser("replay", help="Replay a JSON-lines log file")
     replay_cmd.add_argument("logfile")
+
+    sub.add_parser("token-benchmark", help="Measure token cost across transports")
     return parser
 
 
@@ -68,12 +70,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.benchmark:
         summary = benchmark_v001_vs_v002()
-        print("Benchmark v0.0.1 -> v0.0.2")
+        tp = benchmark_encode_decode_throughput()
+        eager, lazy = benchmark_decode_cpu_before_after()
+        print("Benchmark JSON vs Logorrhythm base64 vs Logorrhythm binary")
         for m in summary.scenarios:
-            print(f"{m.name}: chars {m.v001_chars} -> {m.v002_chars}, bytes {m.v001_bytes} -> {m.v002_bytes}")
-        print(f"total chars: {summary.total_v001_chars} -> {summary.total_v002_chars} ({summary.char_reduction_percent:.2f}% reduction)")
-        print(f"total bytes: {summary.total_v001_bytes} -> {summary.total_v002_bytes} ({summary.byte_reduction_percent:.2f}% reduction)")
+            print(
+                f"{m.name}: chars json/base64 {m.json_chars}->{m.b64_chars}; "
+                f"bytes json/base64/binary {m.json_bytes}->{m.b64_bytes}->{m.binary_bytes}"
+            )
+        print(f"total chars: {summary.total_json_chars} -> {summary.total_b64_chars} ({summary.char_reduction_percent:.2f}% reduction)")
+        print(f"total bytes json->binary: {summary.total_json_bytes} -> {summary.total_binary_bytes} ({summary.byte_reduction_percent:.2f}% reduction)")
+        print(f"encode throughput: {tp.encode_messages_per_sec:.0f} msg/s")
+        print(f"decode throughput: {tp.decode_messages_per_sec:.0f} msg/s")
+        print(f"decode CPU eager->{eager:.4f}s lazy->{lazy:.4f}s")
         return 0
+    if args.command == "token-benchmark":
+        t = benchmark_tokens()
+        print(f"json_tokens={t.json_tokens}")
+        print(f"base64_tokens={t.base64_tokens}")
+        print(f"adaptive_tokens={t.adaptive_tokens}")
+        if t.json_tokens:
+            print(f"base64_savings={(1 - (t.base64_tokens / t.json_tokens)) * 100:.2f}%")
+            print(f"adaptive_savings={(1 - (t.adaptive_tokens / t.json_tokens)) * 100:.2f}%")
+        return 0
+
     if args.v003_dashboard:
         print(build_v003_dashboard().to_markdown())
         return 0

@@ -47,6 +47,7 @@ def run_demo() -> None:
         message_type=MessageType.AGENT,
         payload=payload,
         capabilities=CAP_TEXT | CAP_ROUTING,
+        transport_base64=True,
     )
 
     bus.send("agent2", encoded)

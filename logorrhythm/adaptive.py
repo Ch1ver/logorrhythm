@@ -69,3 +69,15 @@ def benchmark_adaptive_vs_static(*, message: str = "HANDOFF:A1>A2", count: int =
         static_bytes += len(raw)
         adaptive_bytes += len(codec.encode(message))
     return AdaptiveBenchmark(static_bytes=static_bytes, adaptive_bytes=adaptive_bytes)
+
+
+def benchmark_adaptive_exchange(*, count: int = 10000) -> AdaptiveBenchmark:
+    codec = AdaptiveCodec(warmup_hits=2)
+    static_bytes = 0
+    adaptive_bytes = 0
+    sequence = ["HANDOFF:A1>A2", "QUERY:A2>A1", "HANDOFF:A1>A2", "HANDOFF:A1>A2"]
+    for i in range(count):
+        msg = sequence[i % len(sequence)]
+        static_bytes += len(msg.encode("utf-8"))
+        adaptive_bytes += len(codec.encode(msg))
+    return AdaptiveBenchmark(static_bytes=static_bytes, adaptive_bytes=adaptive_bytes)

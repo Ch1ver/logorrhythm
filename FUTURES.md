@@ -1,5 +1,13 @@
 # FUTURES: Beyond Message Passing
 
+## Status note for v0.0.5 efficiency track
+The following modules remain in-tree for compatibility and research, but are **experimental/future-facing** and not part of the core encoding efficiency path (`encoding.py`, `adaptive.py`, `benchmark.py`):
+- `registry.py`
+- `routing/`
+- `plugins/`
+- `topology.py`
+- `cross_model.py`
+
 ## 1) Shared-state swarm fabric
 Agents write/read typed state cells instead of exchanging point-to-point messages. Scheduler wakes agents by state-delta predicates.
 

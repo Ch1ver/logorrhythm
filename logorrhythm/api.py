@@ -31,7 +31,7 @@ def encode(*, task: str, src: str = "agent-A1", dst: str = "agent-A2", instructi
     flags = 0
     if secure_mode:
         flags |= 0b10
-    return encode_message(message_type=MessageType.AGENT, payload=payload, version=PROTOCOL_VERSION, flags=flags)
+    return encode_message(message_type=MessageType.AGENT, payload=payload, version=PROTOCOL_VERSION, flags=flags, transport_base64=True)
 
 
 def decode(encoded: str, *, shared_secret: bytes = b"", secure_mode: bool = False) -> str:
@@ -51,7 +51,7 @@ def receive(encoded: str) -> str:
 
 def encode_legacy(*, task: str, src: AgentCode = AgentCode.A1, dst: AgentCode = AgentCode.A2, instruction: InstructionCode = InstructionCode.HANDOFF) -> str:
     payload = encode_compact_payload(src=src, dst=dst, instruction=instruction, task=task)
-    return encode_message(message_type=MessageType.AGENT, payload=payload)
+    return encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
 
 
 def ensure_response_correlation(request_correlation_id: str, response_correlation_id: str) -> None:

@@ -23,7 +23,7 @@ class ApiAndEncodingRoundTripTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="status",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         decoded = decode_message(encoded)
         compact = decode_compact_payload(decoded.payload)
         self.assertEqual(compact.task, "status")
@@ -46,7 +46,7 @@ class DecodeFailureTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        return encode_message(message_type=MessageType.AGENT, payload=payload)
+        return encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
 
     def test_bad_base64(self):
         with self.assertRaisesRegex(DecodingError, "Invalid base64url transport"):
