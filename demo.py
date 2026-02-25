@@ -1,4 +1,4 @@
-"""Repository-root demo entrypoint for LOGORRHYTHM v0.0.1."""
+"""Repository-root demo entrypoint for LOGORRHYTHM v0.0.2."""
 
 from logorrhythm._demo_core import run_demo
 
