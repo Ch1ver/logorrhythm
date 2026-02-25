@@ -53,7 +53,7 @@ class ConformanceSuiteTests(unittest.TestCase):
             shared_secret=secret,
             secure_mode=True,
         )
-        msg = encode_message(message_type=MessageType.AGENT, payload=payload, version=PROTOCOL_VERSION, flags=0b10)
+        msg = encode_message(message_type=MessageType.AGENT, payload=payload, version=PROTOCOL_VERSION, flags=0b10, transport_base64=True)
         decoded = decode_message(msg, security=SecurityConfig(shared_secret=secret, secure_mode=True), nonce_store=ReplayNonceStore())
         self.assertEqual(decoded.version, PROTOCOL_VERSION)
 
@@ -69,7 +69,7 @@ class ConformanceSuiteTests(unittest.TestCase):
             secure_mode=True,
         )
         tampered = payload[:-1] + (b"0" if payload[-1:] != b"0" else b"1")
-        msg = encode_message(message_type=MessageType.AGENT, payload=tampered, version=PROTOCOL_VERSION, flags=0b10)
+        msg = encode_message(message_type=MessageType.AGENT, payload=tampered, version=PROTOCOL_VERSION, flags=0b10, transport_base64=True)
         with self.assertRaisesRegex(DecodingError, "invalid signature"):
             decode_message(msg, security=SecurityConfig(shared_secret=secret, secure_mode=True), nonce_store=ReplayNonceStore())
 
@@ -96,7 +96,7 @@ class ConformanceSuiteTests(unittest.TestCase):
 
     def test_missing_signature_rejected_when_secure(self):
         payload = encode_agent_payload_v2(source_id="a", destination_id="b", instruction="HANDOFF", task="x", nonce=5)
-        msg = encode_message(message_type=MessageType.AGENT, payload=payload, version=PROTOCOL_VERSION)
+        msg = encode_message(message_type=MessageType.AGENT, payload=payload, version=PROTOCOL_VERSION, transport_base64=True)
         with self.assertRaisesRegex(DecodingError, "missing signature"):
             decode_message(msg, security=SecurityConfig(shared_secret=b"secret", secure_mode=True), nonce_store=ReplayNonceStore())
 
@@ -175,6 +175,22 @@ class ConformanceSuiteTests(unittest.TestCase):
             rc = main(["inspect", encoded])
         self.assertEqual(rc, 0)
         self.assertIn("inspect-me", buf.getvalue())
+
+
+    def test_token_benchmark_cli_table(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from logorrhythm.cli import main
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = main(["token-benchmark"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("Token benchmark report", out)
+        self.assertIn("single_control", out)
+        self.assertIn("nested_payload", out)
 
     def test_structured_log_required_fields(self):
         event = emit_event(

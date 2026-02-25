@@ -17,7 +17,6 @@ from .spec import (
     ALLOWED_CAPABILITY_BITS,
     FLAG_COMPRESSED,
     FLAG_SIGNED,
-    HEADER_SIZE,
     MAX_MESSAGE_BYTES,
     PAYLOAD_MIN_SIZE,
     AgentCode,
@@ -27,7 +26,12 @@ from .spec import (
     PROTOCOL_VERSION_LEGACY,
 )
 
-_HEADER_FORMAT = ">BBBHHI"
+_HEADER_STRUCT = struct.Struct(">BBHHI")
+_LEGACY_HEADER_STRUCT = struct.Struct(">BBBHHI")
+_NONCE_STRUCT = struct.Struct(">Q")
+_U16_STRUCT = struct.Struct(">H")
+_CONTROL_TYPE_MASK = 0x0F
+_CONTROL_FLAGS_SHIFT = 4
 _SUPPORTED_FLAG_BITS = FLAG_COMPRESSED | FLAG_SIGNED
 _AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,255}$")
 
@@ -53,12 +57,34 @@ class AgentEnvelopeV2:
 
 @dataclass(frozen=True)
 class DecodedMessage:
+    _buffer: memoryview
     version: int
-    message_type: MessageType
+    _message_type_raw: int
     flags: int
     capabilities: int
     payload_length: int
-    payload: bytes
+
+    @property
+    def message_type(self) -> MessageType:
+        return MessageType(self._message_type_raw)
+
+    @property
+    def payload(self) -> bytes:
+        return self._buffer.tobytes()
+
+    @property
+    def payload_view(self) -> memoryview:
+        return self._buffer
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "version": self.version,
+            "message_type": self.message_type.name,
+            "flags": self.flags,
+            "capabilities": self.capabilities,
+            "payload_length": self.payload_length,
+            "payload": self.payload,
+        }
 
 
 @dataclass(frozen=True)
@@ -162,8 +188,8 @@ def encode_agent_payload_v2(
             _pack_sized_text(destination_id, "destination_id"),
             _pack_sized_text(instruction, "instruction"),
             _pack_sized_text(cid, "correlation_id"),
-            struct.pack(">Q", msg_nonce),
-            struct.pack(">H", len(task_bytes)),
+            _NONCE_STRUCT.pack(msg_nonce),
+            _U16_STRUCT.pack(len(task_bytes)),
             task_bytes,
         )
     )
@@ -252,10 +278,10 @@ def decode_agent_payload_v2(
     if offset + 8 + 2 > len(payload):
         raise DecodingError("Payload too short for nonce/task")
 
-    nonce = struct.unpack(">Q", payload[offset : offset + 8])[0]
+    nonce = _NONCE_STRUCT.unpack(payload[offset : offset + 8])[0]
     offset += 8
 
-    task_len = struct.unpack(">H", payload[offset : offset + 2])[0]
+    task_len = _U16_STRUCT.unpack(payload[offset : offset + 2])[0]
     offset += 2
     if offset + task_len + 1 > len(payload):
         raise DecodingError("invalid length for task")
@@ -311,7 +337,16 @@ def _from_base64url(text: str) -> bytes:
         raise DecodingError("Invalid base64url transport") from exc
 
 
-def encode_message(*, message_type: MessageType, payload: bytes, flags: int = 0, capabilities: int = 0, version: int = PROTOCOL_VERSION_LEGACY, max_message_bytes: int = MAX_MESSAGE_BYTES) -> str:
+def encode_message(
+    *,
+    message_type: MessageType,
+    payload: bytes,
+    flags: int = 0,
+    capabilities: int = 0,
+    version: int = PROTOCOL_VERSION_LEGACY,
+    max_message_bytes: int = MAX_MESSAGE_BYTES,
+    transport_base64: bool = False,
+) -> bytes | str:
     if version not in (PROTOCOL_VERSION_LEGACY, PROTOCOL_VERSION):
         raise EncodingError(f"Unsupported protocol version for encoder: {version}")
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
@@ -324,23 +359,42 @@ def encode_message(*, message_type: MessageType, payload: bytes, flags: int = 0,
     if len(payload) > 0xFFFF:
         raise EncodingError("Payload too large for length field")
     crc32 = binascii.crc32(payload) & 0xFFFFFFFF
-    header = struct.pack(_HEADER_FORMAT, version, int(message_type), flags, capabilities, len(payload), crc32)
+    if transport_base64:
+        header = _LEGACY_HEADER_STRUCT.pack(version, int(message_type), flags, capabilities, len(payload), crc32)
+    else:
+        control = ((flags & 0x0F) << _CONTROL_FLAGS_SHIFT) | (int(message_type) & _CONTROL_TYPE_MASK)
+        header = _HEADER_STRUCT.pack(version, control, capabilities, len(payload), crc32)
     msg = header + payload
     if len(msg) > max_message_bytes:
         raise EncodingError("Encoded message exceeds max_message_bytes")
-    return _to_base64url(msg)
+    if transport_base64:
+        return _to_base64url(msg)
+    return msg
 
 
-def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES, security: SecurityConfig | None = None, nonce_store: ReplayNonceStore | None = None) -> DecodedMessage:
-    max_encoded_chars = (4 * max_message_bytes + 2) // 3
-    if len(encoded) > max_encoded_chars:
-        raise DecodingError("Encoded transport exceeds max_message_bytes")
-    message = _from_base64url(encoded)
+def decode_message(encoded: bytes | str, *, max_message_bytes: int = MAX_MESSAGE_BYTES, security: SecurityConfig | None = None, nonce_store: ReplayNonceStore | None = None) -> DecodedMessage:
+    if isinstance(encoded, str):
+        max_encoded_chars = (4 * max_message_bytes + 2) // 3
+        if len(encoded) > max_encoded_chars:
+            raise DecodingError("Encoded transport exceeds max_message_bytes")
+        message = _from_base64url(encoded)
+        if len(message) < _LEGACY_HEADER_STRUCT.size:
+            raise DecodingError("Message too short for header")
+        version, msg_type_raw, flags, capabilities, payload_length, checksum = _LEGACY_HEADER_STRUCT.unpack(
+            message[: _LEGACY_HEADER_STRUCT.size]
+        )
+        header_size = _LEGACY_HEADER_STRUCT.size
+    else:
+        message = bytes(encoded)
+        if len(message) < _HEADER_STRUCT.size:
+            raise DecodingError("Message too short for header")
+        version, control, capabilities, payload_length, checksum = _HEADER_STRUCT.unpack(message[: _HEADER_STRUCT.size])
+        msg_type_raw = control & _CONTROL_TYPE_MASK
+        flags = (control >> _CONTROL_FLAGS_SHIFT) & 0x0F
+        header_size = _HEADER_STRUCT.size
+
     if len(message) > max_message_bytes:
         raise DecodingError("Message exceeds max_message_bytes")
-    if len(message) < HEADER_SIZE:
-        raise DecodingError("Message too short for header")
-    version, msg_type_raw, flags, capabilities, payload_length, checksum = struct.unpack(_HEADER_FORMAT, message[:HEADER_SIZE])
     if version not in (PROTOCOL_VERSION_LEGACY, PROTOCOL_VERSION):
         raise DecodingError(f"Unsupported protocol version: {version}")
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
@@ -349,23 +403,22 @@ def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES, 
         raise DecodingError("Reserved flag bits must be zero")
     if flags & FLAG_COMPRESSED:
         raise DecodingError("Compressed messages are not supported")
-    payload = message[HEADER_SIZE:]
+
+    payload = memoryview(message)[header_size:]
     if len(payload) != payload_length:
         raise DecodingError("payload_length mismatch")
     if (binascii.crc32(payload) & 0xFFFFFFFF) != checksum:
         raise DecodingError("CRC32 checksum mismatch")
-    try:
-        message_type = MessageType(msg_type_raw)
-    except ValueError as exc:
-        raise DecodingError(f"Unknown message type: {msg_type_raw}") from exc
+    if msg_type_raw not in {int(mt) for mt in MessageType}:
+        raise DecodingError(f"Unknown message type: {msg_type_raw}")
 
-    if message_type is MessageType.AGENT:
+    if MessageType(msg_type_raw) is MessageType.AGENT:
         if version == PROTOCOL_VERSION_LEGACY:
-            decode_compact_payload(payload)
+            decode_compact_payload(payload.tobytes())
         else:
-            decode_agent_payload_v2(payload, security=security, nonce_store=nonce_store)
+            decode_agent_payload_v2(payload.tobytes(), security=security, nonce_store=nonce_store)
 
-    return DecodedMessage(version, message_type, flags, capabilities, payload_length, payload)
+    return DecodedMessage(payload, version, msg_type_raw, flags, capabilities, payload_length)
 
 
 def render_message_human(decoded: DecodedMessage, *, security: SecurityConfig | None = None) -> str:

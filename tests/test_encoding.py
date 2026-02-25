@@ -27,7 +27,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="status?",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         decoded = decode_message(encoded)
         compact = decode_compact_payload(decoded.payload)
         self.assertEqual(decoded.message_type, MessageType.AGENT)
@@ -36,6 +36,19 @@ class EncodingTests(unittest.TestCase):
         self.assertEqual(compact.instruction, InstructionCode.HANDOFF)
         self.assertEqual(compact.task, "status?")
 
+
+
+    def test_binary_transport_round_trip(self):
+        payload = encode_compact_payload(
+            src=AgentCode.A1,
+            dst=AgentCode.A2,
+            instruction=InstructionCode.HANDOFF,
+            task="status?",
+        )
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        self.assertIsInstance(encoded, bytes)
+        decoded = decode_message(encoded)
+        self.assertEqual(decode_compact_payload(decoded.payload).task, "status?")
 
     def test_reject_non_enum_compact_payload_fields(self):
         with self.assertRaisesRegex(Exception, "src must be an AgentCode"):
@@ -56,7 +69,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         raw = bytearray(self._decode_raw(encoded))
         raw[HEADER_SIZE] ^= 0x01
         with self.assertRaisesRegex(DecodingError, "CRC32"):
@@ -69,7 +82,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         raw = self._decode_raw(encoded)
         version, mt, flags, caps, plen, crc = struct.unpack(">BBBHHI", raw[:HEADER_SIZE])
         tampered_header = struct.pack(">BBBHHI", version, mt, flags, caps, plen + 1, crc)
@@ -84,7 +97,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         with self.assertRaisesRegex(DecodingError, "max_message_bytes"):
             decode_message(encoded, max_message_bytes=8)
 
@@ -95,7 +108,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         raw = bytearray(self._decode_raw(encoded))
         raw[0] = 9
         with self.assertRaisesRegex(DecodingError, "Unsupported protocol version"):
@@ -108,7 +121,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         raw = self._decode_raw(encoded)
         version, mt, flags, caps, plen, crc = struct.unpack(">BBBHHI", raw[:HEADER_SIZE])
         tampered_header = struct.pack(">BBBHHI", version, mt, flags, caps | 0x8000, plen, crc)
@@ -129,7 +142,7 @@ class EncodingTests(unittest.TestCase):
             instruction=InstructionCode.HANDOFF,
             task="abc",
         )
-        encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+        encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
         raw = self._decode_raw(encoded)
         version, mt, flags, caps, plen, crc = struct.unpack(">BBBHHI", raw[:HEADER_SIZE])
         tampered_header = struct.pack(">BBBHHI", version, mt, flags | 0x80, caps, plen, crc)

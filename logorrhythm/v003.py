@@ -97,7 +97,8 @@ def _v001_round_trip(src: str, dst: str, instruction: str, task: str) -> tuple[i
     if decoded["task"] != task:
         raise RuntimeError("Baseline transport corruption detected")
     elapsed_ms = (time.perf_counter_ns() - started) / 1_000_000
-    return len(encoded.encode("utf-8")), elapsed_ms
+    encoded_bytes = encoded if isinstance(encoded, bytes) else encoded.encode("utf-8")
+    return len(encoded_bytes), elapsed_ms
 
 
 def _v002_round_trip(src: str, dst: str, instruction: str, task: str) -> tuple[int, float]:
@@ -108,13 +109,14 @@ def _v002_round_trip(src: str, dst: str, instruction: str, task: str) -> tuple[i
         instruction=InstructionCode[instruction],
         task=task,
     )
-    encoded = encode_message(message_type=MessageType.AGENT, payload=payload)
+    encoded = encode_message(message_type=MessageType.AGENT, payload=payload, transport_base64=True)
     decoded_msg = decode_message(encoded)
     decoded_payload = decode_compact_payload(decoded_msg.payload)
     if decoded_payload.task != task:
         raise RuntimeError("v0.0.2 transport corruption detected")
     elapsed_ms = (time.perf_counter_ns() - started) / 1_000_000
-    return len(encoded.encode("utf-8")), elapsed_ms
+    encoded_bytes = encoded if isinstance(encoded, bytes) else encoded.encode("utf-8")
+    return len(encoded_bytes), elapsed_ms
 
 
 def _run_simulation(agent_count: int, messages_per_agent: int, seed: int) -> ScaleResult:

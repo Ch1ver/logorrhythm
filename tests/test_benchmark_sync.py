@@ -42,7 +42,7 @@ class BenchmarkSyncTests(unittest.TestCase):
     def test_graph_generation_writes_svg_text_files(self):
         with tempfile.TemporaryDirectory() as td:
             generated = sync_graph_artifacts(td)
-            self.assertEqual(len(generated), 3)
+            self.assertEqual(len(generated), 4)
             for path in generated:
                 self.assertTrue(path.endswith(".svg"))
                 text = Path(path).read_text(encoding="utf-8")

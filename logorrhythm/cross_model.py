@@ -1,7 +1,7 @@
 """Cross-model benchmark harness.
 
 The harness is provider-agnostic: callers inject send functions for each model API.
-"""
+ [EXPERIMENTAL / not hot-path]."""
 
 from __future__ import annotations
 
