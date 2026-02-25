@@ -11,7 +11,6 @@ requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "LOGORRHYTHM maintainers"}]
 dependencies = [
-  "matplotlib>=3.8",
   "websockets>=12.0",
 ]
 

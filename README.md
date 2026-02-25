@@ -4,19 +4,20 @@ LOGORRHYTHM is a compact protocol primitive for multi-agent communication with b
 
 ## Performance (v0.0.6)
 
-- **JSON → Binary size reduction:** **43.09%** (304B → 173B)
-- **Token reduction (adaptive vs JSON):** **94.03%** average across token scenarios
-- **Encode throughput:** **703,000 msg/s**
-- **Decode throughput:** **98,500 msg/s**
-- **Adaptive repeated exchange improvement:** **83.98%**
+Performance is workload- and host-dependent. To avoid inflated claims, this repository now treats benchmark output as measured data, not fixed guarantees.
+
+- JSON vs binary payload bytes should be validated per scenario (`python -m logorrhythm.cli --benchmark`)
+- Token savings vary by prompt-safe representation (base64/hex can increase token count)
+- Adaptive compression only improves repeated exchanges and can regress on unique message streams
+- Throughput values are machine-specific and should be reported with run count + variance
 
 <!-- LOGORRHYTHM_BENCHMARK_TABLE_START -->
 | Transport | Size Bytes | Tokens | Encode msg/s | Decode msg/s | Notes |
 |---|---:|---:|---:|---:|---|
-| JSON baseline | 304 | 67 | baseline | baseline | Readable, largest payload |
-| Logorrhythm base64 | 236 | 104 | 612000 | 95300 | Compatibility mode (token-heavier) |
-| Logorrhythm binary | 173 | 44 | 703000 | 98500 | Binary-first default |
-| Logorrhythm adaptive repeated exchange | 20022 / 125000 | 4 | n/a | n/a | 83.98% size improvement in repeated flows |
+| JSON baseline | scenario-dependent | scenario-dependent | baseline | baseline | Human-readable control baseline |
+| Logorrhythm base64 | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Compatibility mode; often token-heavier |
+| Logorrhythm binary | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Binary-first wire format |
+| Logorrhythm adaptive repeated exchange | improves only in repeated streams | scenario-dependent | n/a | n/a | Validate 100/1k/10k cycles and include worst-case unique-stream regression |
 <!-- LOGORRHYTHM_BENCHMARK_TABLE_END -->
 
 ## Agent Quick Start

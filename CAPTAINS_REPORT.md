@@ -1,76 +1,123 @@
-# Captain's Report — LOGORRHYTHM (Top-Down Status)
+# Captain's Report — LOGORRHYTHM v0.0.6 Hardening Audit
 
 _Date:_ 2026-02-25
 
-## Executive status
+## Executive summary
 
-- **Trajectory:** Healthy for current scope. The repository is cohesive around a clear v0.0.2 protocol core with a v0.0.3 planning simulator and CLI surface.
-- **Readiness signal:** Core tests pass; benchmark and dashboard both report measurable communication gains for v0.0.2 compared to v0.0.1-style payloads.
-- **Primary risk:** **Sprawl-by-intent drift** — vision language and roadmap breadth are expanding faster than enforceable interfaces and production transport boundaries.
+- Performance claims in README/graph sync were overly static and partially misleading for runtime reality.
+- Core runtime path remains lightweight (`logorrhythm` import ~60–70 ms cold-process median on this host).
+- Adaptive compression is strong for repeated exchanges, but regresses on unique streams (negative savings).
+- Token savings are not consistent across prompt-safe binary representations; some scenarios increase tokens.
 
-## Top-down map
+## 1) Benchmark validation
 
-1. **North star / product thesis**
-   - Positioning is consistent: compact inter-agent transport first, execution language second.
-   - Roadmap and specification communicate clear release gates (correctness + measurable footprint improvement).
+### Matrix covered
 
-2. **Protocol core (Layer 1)**
-   - Tight implementation shape: typed enums, canonical header, strict decode validations, checksum/length checks.
-   - Scope appears intentionally constrained to compact positional payloads and local simulation transport.
+- Small control message
+- Medium payload (5–10 fields)
+- Nested payload
+- Repeated exchanges at 100 / 1k / 10k cycles
 
-3. **Iteration & planning (v0.0.3 dashboard)**
-   - A simulation module produces scale tiers, latency/throughput proxy metrics, recommendations, and security posture text.
-   - This is useful as a planning board, but currently not a real-world transport benchmark.
+### Results (this host)
 
-4. **Developer ergonomics**
-   - CLI has focused entrypoints (`--demo`, `--benchmark`, `--v003-dashboard`).
-   - Test suite validates transport correctness and expected benchmark/dashboard directional improvement.
+#### Byte size (JSON vs Logorrhythm)
 
-## Sprawl assessment (what can spread)
+| Scenario | JSON bytes | Logorrhythm binary bytes | Logorrhythm base64 bytes |
+|---|---:|---:|---:|
+| Small control | 24 | 34 | 47 |
+| Medium payload | 129 | 139 | 187 |
+| Nested payload | 151 | 161 | 216 |
 
-### 1) Conceptual sprawl (high)
+Observation: for raw JSON blobs embedded as payload, envelope overhead can make Logorrhythm larger. Prior fixed-size claims were workload-specific and should not be generalized.
 
-- The project carries large strategic ambitions (multi-agent routing, signed transport, execution language semantics) while implementation is still compact and local-process.
-- Risk: docs can imply production maturity beyond current transport reality.
+#### Token count (tiktoken `cl100k_base` on this host)
 
-### 2) Surface-area sprawl (medium)
+| Scenario | JSON tokens | Base64 tokens | Binary-as-hex tokens |
+|---|---:|---:|---:|
+| Small control | 6 | 12 | 17 |
+| Medium payload | 33 | 47 | 70 |
+| Nested payload | 38 | 54 | 81 |
 
-- Currently manageable module count and simple package layout.
-- Risk concentration is in `v003` planning logic growing into de-facto product behavior without being separated into simulation vs runtime packages.
+Observation: token reduction does **not** hold consistently for prompt-safe transport forms in these realistic scenarios.
 
-### 3) Governance sprawl (medium-high)
+#### Throughput over 7 runs (50,000 iterations/run)
 
-- Security recommendations are solid, but mostly advisory.
-- Risk: hard requirements (CI checks, signing, scanning) are not enforced in-repo as executable policy artifacts yet.
+- Encode msg/s: avg **644,399**, stdev **82,241**, worst **453,865**
+- Decode msg/s: avg **99,185**, stdev **4,266**, worst **93,051**
 
-## Current strengths
+#### Adaptive repeated exchange compression
 
-- **Clear protocol constraints** reduce ambiguity and parsing hazards.
-- **Benchmark gate philosophy** discourages regression-by-marketing.
-- **Small codebase footprint** keeps change cost low and reviewability high.
+- 100 exchanges: **82.24%** improvement (deterministic in current implementation)
+- 1,000 exchanges: **83.824%** improvement
+- 10,000 exchanges: **83.9824%** improvement
+- Worst-case unique-stream scenario (1,000 unique messages): **-25.71%** (regression)
 
-## Main gaps to close next
+## 2) Runtime weight audit
 
-1. **Make planning-vs-runtime boundary explicit in code structure**
-   - Split simulation/forecast code from protocol runtime modules.
-   - Prevent dashboard assumptions from leaking into wire-level claims.
+### Cold import time (7 process runs)
 
-2. **Lock release gates into automation**
-   - Encode the v0.0.3 hard gate as CI checks (conformance + benchmark delta assertions).
+- `import logorrhythm`: median ~**0.062 s**
+- `import logorrhythm.encoding`: median ~**0.062 s**
+- `import logorrhythm.api`: median ~**0.061 s**
 
-3. **Define transport maturity levels**
-   - Add explicit status taxonomy in docs (local-only, lab transport, production-safe).
+### Runtime dependency path (core encoding)
 
-4. **Contain Layer 2 scope creep**
-   - Keep Layer 2 as draft until parser + deterministic semantics + fixture-based conformance exist.
+Core imports are stdlib-only plus internal modules:
+- stdlib: `base64`, `binascii`, `hashlib`, `hmac`, `json`, `re`, `struct`, `uuid`, `dataclasses`
+- internal: `logorrhythm.spec`, `logorrhythm.exceptions`
 
-## 30-day command intent (captain-level)
+Confirmed:
+- `matplotlib` not imported in runtime core path
+- token libraries not imported in runtime core path (`tiktoken` only lazy-imported in benchmark helper)
+- CLI modules not imported by `logorrhythm.encoding`
 
-- **Week 1:** Repo policy hardening baseline (required tests, dependency/secret scans, signed-commit policy docs).
-- **Week 2:** Introduce chunk/sequence frame interfaces (no network yet), add deterministic reassembly tests.
-- **Week 3:** Add transport adapter abstraction and one real adapter prototype behind feature flag.
-- **Week 4:** Publish objective release dashboard from CI artifacts; decide go/no-go based on gate results only.
+### Dependency footprint correction
 
-## Captain's call
+`matplotlib` removed from package runtime dependencies in `pyproject.toml` to avoid unnecessary install/runtime weight.
 
-The ship is **on-course** for a disciplined v0.0.3 if you keep strict boundaries: protocol correctness first, measurable communication efficiency second, transport reality always labeled clearly. Biggest hazard is not code quality today — it is strategic overextension before control systems (CI policy + conformance harnesses + maturity labeling) are fully active.
+## 3) Performance risk review
+
+- No blocking I/O in encode/decode hot path.
+- `struct.Struct` objects compiled once at import (`_HEADER_STRUCT`, `_NONCE_STRUCT`, etc.).
+- `DecodedMessage.payload_view` provides zero-copy default access.
+- `DecodedMessage.payload` still allocates bytes copy by design (non-default path).
+- Average decode allocation (payload_view path):
+  - ~**0.0328 bytes/message**
+  - ~**0.00025 allocations/message**
+
+## 4) Token economics validation
+
+Across realistic coordination payloads used in this audit:
+- JSON baseline consistently used fewer tokens than base64 or binary-hex prompt-safe forms.
+- Adaptive aliasing can reduce repeated control stream tokens materially, but only after warmup and only for repeated messages.
+
+Conclusion: a blanket “30%+ token reduction” is not valid across mixed realistic patterns.
+
+## 5) Tech debt cleanup executed
+
+- Removed hard-coded benchmark claims from README and sync table; replaced with scenario/host-dependent framing.
+- Replaced deterministic benchmark constants in `v004` metrics shim with explicit placeholder compatibility values.
+- Updated tests to validate stable schema/keys rather than inflated numeric guarantees.
+- Removed unnecessary `matplotlib` runtime dependency.
+
+## 6) Adoption simulation (10,000 coordination messages)
+
+This host, Python process benchmark:
+- JSON encode+decode total: **0.123 s**
+- Logorrhythm compact encode+decode total: **0.164 s**
+
+Interpretation:
+- Runtime overhead is measurable and can exceed JSON in pure local CPU loop, depending on payload shape.
+- Benefits are most compelling when wire compactness and repeated adaptive streams dominate over local encode/decode CPU cost.
+
+GitHub/pip installation penalty:
+- No runtime penalty once installed beyond dependency footprint and import cost.
+- Reducing unnecessary dependencies (e.g., `matplotlib`) lowers install and cold-start burden.
+
+## 7) Recommendation
+
+**Iterate further before publicizing broad performance claims.**
+
+- Keep v0.0.6 core functionality.
+- Roll back universal performance/token claims.
+- Publish benchmark results with explicit scenario matrix, run count, variance, and worst-case counterexamples.
