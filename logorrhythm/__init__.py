@@ -1,32 +1,7 @@
-"""LOGORRHYTHM v0.0.3 package."""
+"""LOGORRHYTHM v0.0.4."""
 
-from .encoding import (
-    CompactPayload,
-    DecodedMessage,
-    decode_compact_payload,
-    decode_message,
-    encode_compact_payload,
-    encode_message,
-    render_message_human,
-)
-from .spec import AgentCode, InstructionCode, MAX_MESSAGE_BYTES, MessageType, PROTOCOL_VERSION
-from .v003 import build_v003_dashboard
+from .api import decode, encode, receive, send
 
-__all__ = [
-    "CompactPayload",
-    "DecodedMessage",
-    "decode_compact_payload",
-    "decode_message",
-    "encode_compact_payload",
-    "encode_message",
-    "render_message_human",
-    "AgentCode",
-    "InstructionCode",
-    "MAX_MESSAGE_BYTES",
-    "MessageType",
-    "PROTOCOL_VERSION",
-    "build_v003_dashboard",
-    "sync_readme_benchmark_table",
-]
+__version__ = "0.0.4"
 
-from .benchmark_sync import sync_readme_benchmark_table
+__all__ = ["encode", "decode", "send", "receive", "__version__"]

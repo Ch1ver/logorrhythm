@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logorrhythm"
+version = "0.0.4"
+description = "Machine-native compact protocol for multi-agent communication"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "LOGORRHYTHM maintainers"}]
+dependencies = [
+  "matplotlib>=3.8",
+  "websockets>=12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ch1ver/logorrhythm"
+Repository = "https://github.com/ch1ver/logorrhythm"
+
+[project.scripts]
+logorrhythm = "logorrhythm.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["logorrhythm*"]

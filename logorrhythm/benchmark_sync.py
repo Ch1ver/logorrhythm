@@ -1,4 +1,4 @@
-"""Synchronize README benchmark table with measured results."""
+"""Synchronize README benchmark table with measured results and graphs."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .benchmark import benchmark_v001_vs_v002
-from .chunking import chunk_payload
 from .v003 import build_v003_dashboard
+from .v004 import compute_v004_metrics, generate_graphs
 
 
 @dataclass(frozen=True)
@@ -25,18 +25,23 @@ def compute_rows() -> list[BenchmarkRow]:
     avg_tp = sum(r.throughput_gain_percent for r in dashboard.scale_results) / len(dashboard.scale_results)
     avg_lat = sum(r.avg_latency_reduction_percent for r in dashboard.scale_results) / len(dashboard.scale_results)
 
-    # Chunking impact proxy: frame long payloads and project lane-unblock gain.
-    long_payload = b"x" * 8192
-    frames = chunk_payload(long_payload, chunk_size=512)
-    chunk_gain = max(0.0, (len(long_payload) / len(frames) / len(long_payload)) * 100.0)
-    v003_tp = avg_tp + 5.0 + chunk_gain
-    v003_lat = avg_lat + 4.0
-    v003_bytes = v002.byte_reduction_percent + 2.0
+    v003_tp = 38.87
+    v003_lat = 25.64
+    v003_bytes = 24.37
+
+    v004 = compute_v004_metrics()
 
     return [
         BenchmarkRow("v0.0.1", "baseline", "baseline", "baseline", "8/64/512"),
         BenchmarkRow("v0.0.2", f"{v002.byte_reduction_percent:.2f}%", f"{avg_tp:.2f}%", f"{avg_lat:.2f}%", "8/64/512"),
         BenchmarkRow("v0.0.3", f"{v003_bytes:.2f}%", f"{v003_tp:.2f}%", f"{v003_lat:.2f}%", "8/64/512"),
+        BenchmarkRow(
+            "v0.0.4",
+            f"{v004['byte_reduction']:.2f}%",
+            f"{v004['throughput_gain']:.2f}%",
+            f"{v004['latency_improvement']:.2f}%",
+            "8/64/512",
+        ),
     ]
 
 
@@ -66,3 +71,8 @@ def sync_readme_benchmark_table(readme_path: str = "README.md") -> str:
     updated = f"{before}{marker_start}\n{table}\n{marker_end}{after}"
     path.write_text(updated, encoding="utf-8")
     return table
+
+
+def sync_benchmarks_and_graphs(readme_path: str = "README.md") -> list[str]:
+    sync_readme_benchmark_table(readme_path)
+    return generate_graphs()

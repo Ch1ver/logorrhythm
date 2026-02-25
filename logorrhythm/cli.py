@@ -6,7 +6,7 @@ import argparse
 
 from ._demo_core import run_demo
 from .benchmark import benchmark_v001_vs_v002
-from .benchmark_sync import sync_readme_benchmark_table
+from .benchmark_sync import sync_benchmarks_and_graphs
 from .v003 import build_v003_dashboard
 
 
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.sync_benchmark_table:
-        print(sync_readme_benchmark_table())
+        print("\n".join(sync_benchmarks_and_graphs()))
         return 0
 
     parser.print_help()
