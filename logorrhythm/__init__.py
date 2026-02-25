@@ -10,6 +10,7 @@ from .encoding import (
     render_message_human,
 )
 from .spec import AgentCode, InstructionCode, MAX_MESSAGE_BYTES, MessageType, PROTOCOL_VERSION
+from .v003 import build_v003_dashboard
 
 __all__ = [
     "CompactPayload",
@@ -24,4 +25,5 @@ __all__ = [
     "MAX_MESSAGE_BYTES",
     "MessageType",
     "PROTOCOL_VERSION",
+    "build_v003_dashboard",
 ]
