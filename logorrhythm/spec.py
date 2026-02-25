@@ -1,4 +1,9 @@
-"""Protocol specification constants for LOGORRHYTHM v0.0.2."""
+"""Protocol constants for the stable wire format used by LOGORRHYTHM v0.0.5.
+
+Package versions can evolve independently from the protocol wire version.
+The current package release is v0.0.5 while `PROTOCOL_VERSION = 1`
+retains v0.0.2-compatible framing for backward compatibility.
+"""
 
 from __future__ import annotations
 
