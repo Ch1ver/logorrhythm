@@ -1,4 +1,4 @@
-"""LOGORRHYTHM v0.0.2 package."""
+"""LOGORRHYTHM v0.0.3 package."""
 
 from .encoding import (
     CompactPayload,
@@ -26,4 +26,7 @@ __all__ = [
     "MessageType",
     "PROTOCOL_VERSION",
     "build_v003_dashboard",
+    "sync_readme_benchmark_table",
 ]
+
+from .benchmark_sync import sync_readme_benchmark_table
