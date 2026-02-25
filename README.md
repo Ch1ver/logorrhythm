@@ -1,32 +1,47 @@
-# LOGORRHYTHM (v0.0.1)
+# LOGORRHYTHM (v0.0.2)
 
-LOGORRHYTHM is a tiny, strict communication protocol for agent handoffs.
+LOGORRHYTHM is a two-layer protocol and execution language for AI-agent speed.
 
-## What it is
+## Vision
 
-- A canonical binary message layout with base64url transport.
-- A small Python reference implementation.
-- A demo that simulates two agents and compares token usage against a JSON-style message.
+LOGORRHYTHM is not a library. It is infrastructure for the agent era. When AI systems are running 120-day human workloads in 48 hours, they cannot afford to communicate in human-shaped formats. LOGORRHYTHM strips ceremony and ships pure signal: compact wire framing for inter-agent transport (Layer 1) and a compressed execution language for machine-native reasoning (Layer 2).
 
-## What it is *not*
+## Layer 1 status (wire protocol)
 
-- Not an execution engine.
-- Not an agent runtime or orchestration framework.
-- Not a policy brain.
-
-## Safety statement
-
-LOGORRHYTHM is a **communication layer only**. It validates framing, lengths, and checksums; it does not execute received payloads and should not be treated as a code runner or autonomy framework.
-
-## Protocol highlights (v0.0.1)
-
-- Positional binary header fields (no English field names in canonical bytes).
-- Base64url transport format.
-- CRC32 payload checksum.
-- Strict payload length enforcement.
+- Canonical binary header with positional fields.
+- Base64url transport for tool-safe message exchange.
+- CRC32 payload checksum and strict payload length enforcement.
 - Default message size limit: 4096 bytes.
-- Reserved capability bits are rejected.
-- Compression is only allowed when implemented and flagged (currently rejected for safety).
+- Compact payload layout with no English field names:
+  - `src:u8` (agent code)
+  - `dst:u8` (agent code)
+  - `instruction:u8` (opcode)
+  - `task:utf8` (semantic content only)
+
+### Instruction byte codes
+
+- `0x01` HANDOFF
+- `0x02` COMPLETE
+- `0x03` QUERY
+- `0x04` ACKNOWLEDGE
+- `0x05` ERROR
+
+## Layer 2 status (execution language)
+
+v0.0.2 introduces a first compressed primitive sketch with 10 operations:
+
+- `R` retrieve
+- `S` store
+- `C` compare
+- `B` branch
+- `L` loop
+- `K` call
+- `N` return
+- `T` transform
+- `F` filter
+- `E` emit
+
+See `SPEC.md` for formal encoding and `ROADMAP.md` for progression.
 
 ## Run the demo
 
@@ -35,13 +50,13 @@ python demo.py
 python -m logorrhythm.cli --demo
 ```
 
+The demo includes proxy benchmarks (char/byte/word) and optional `tiktoken` token counts when available.
+
 ## Run tests
 
 ```bash
 python -m unittest
 ```
-
-If the benchmark says we squeezed tokens while staying explicit and safe, then great — give it all she’s got.
 
 ## License
 

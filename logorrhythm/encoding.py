@@ -14,12 +14,23 @@ from .spec import (
     FLAG_COMPRESSED,
     HEADER_SIZE,
     MAX_MESSAGE_BYTES,
+    PAYLOAD_MIN_SIZE,
+    AgentCode,
+    InstructionCode,
     MessageType,
     PROTOCOL_VERSION,
 )
 
 # version:u8, msg_type:u8, flags:u8, capabilities:u16, payload_len:u16, crc32:u32
 _HEADER_FORMAT = ">BBBHHI"
+
+
+@dataclass(frozen=True)
+class CompactPayload:
+    src: AgentCode
+    dst: AgentCode
+    instruction: InstructionCode
+    task: str
 
 
 @dataclass(frozen=True)
@@ -30,6 +41,51 @@ class DecodedMessage:
     capabilities: int
     payload_length: int
     payload: bytes
+
+
+def encode_compact_payload(*, src: AgentCode, dst: AgentCode, instruction: InstructionCode, task: str) -> bytes:
+    """Encode positional compact payload: src:u8,dst:u8,instruction:u8,task:utf8."""
+    if not isinstance(src, AgentCode):
+        raise EncodingError("src must be an AgentCode")
+    if not isinstance(dst, AgentCode):
+        raise EncodingError("dst must be an AgentCode")
+    if not isinstance(instruction, InstructionCode):
+        raise EncodingError("instruction must be an InstructionCode")
+    if not isinstance(task, str):
+        raise EncodingError("task must be a UTF-8 string")
+    task_bytes = task.encode("utf-8")
+    return bytes((int(src), int(dst), int(instruction))) + task_bytes
+
+
+def decode_compact_payload(payload: bytes) -> CompactPayload:
+    """Decode compact payload into a typed view."""
+    if len(payload) < PAYLOAD_MIN_SIZE:
+        raise DecodingError("Payload too short for compact format")
+
+    src_raw, dst_raw, instruction_raw = payload[0], payload[1], payload[2]
+    task_bytes = payload[3:]
+
+    try:
+        src = AgentCode(src_raw)
+    except ValueError as exc:
+        raise DecodingError(f"Unknown source agent code: {src_raw}") from exc
+
+    try:
+        dst = AgentCode(dst_raw)
+    except ValueError as exc:
+        raise DecodingError(f"Unknown destination agent code: {dst_raw}") from exc
+
+    try:
+        instruction = InstructionCode(instruction_raw)
+    except ValueError as exc:
+        raise DecodingError(f"Unknown instruction code: {instruction_raw}") from exc
+
+    try:
+        task = task_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise DecodingError("Task segment is not valid UTF-8") from exc
+
+    return CompactPayload(src=src, dst=dst, instruction=instruction, task=task)
 
 
 def _to_base64url(raw: bytes) -> str:
@@ -67,7 +123,7 @@ def encode_message(
 
     payload_length = len(payload)
     if payload_length > 0xFFFF:
-        raise EncodingError("Payload too large for v0.0.1 length field")
+        raise EncodingError("Payload too large for v0.0.2 length field")
 
     crc32 = binascii.crc32(payload) & 0xFFFFFFFF
     header = struct.pack(
@@ -104,7 +160,7 @@ def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES) 
     if capabilities & ~ALLOWED_CAPABILITY_BITS:
         raise DecodingError("Reserved capability bits must be zero")
     if flags & FLAG_COMPRESSED:
-        raise DecodingError("Compressed messages are not supported in v0.0.1")
+        raise DecodingError("Compressed messages are not supported in v0.0.2")
 
     payload = message[HEADER_SIZE:]
     if len(payload) != payload_length:
@@ -131,7 +187,7 @@ def decode_message(encoded: str, *, max_message_bytes: int = MAX_MESSAGE_BYTES) 
 
 def render_message_human(decoded: DecodedMessage) -> str:
     """Non-canonical rendering for logs/debugging."""
-    payload_text = decoded.payload.decode("utf-8", errors="replace")
+    compact = decode_compact_payload(decoded.payload)
     return json.dumps(
         {
             "version": decoded.version,
@@ -139,7 +195,12 @@ def render_message_human(decoded: DecodedMessage) -> str:
             "flags": decoded.flags,
             "capabilities": decoded.capabilities,
             "payload_length": decoded.payload_length,
-            "payload": payload_text,
+            "payload": {
+                "src": compact.src.name,
+                "dst": compact.dst.name,
+                "instruction": compact.instruction.name,
+                "task": compact.task,
+            },
         },
         indent=2,
         sort_keys=True,

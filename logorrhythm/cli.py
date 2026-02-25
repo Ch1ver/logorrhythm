@@ -9,7 +9,7 @@ from ._demo_core import run_demo
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LOGORRHYTHM command line interface")
-    parser.add_argument("--demo", action="store_true", help="Run the v0.0.1 demo")
+    parser.add_argument("--demo", action="store_true", help="Run the v0.0.2 demo")
     return parser
 
 
