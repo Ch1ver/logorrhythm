@@ -21,6 +21,14 @@
 - Sequence IDs + continuation opcodes.
 - Partial-result delivery with deterministic reassembly.
 - Backpressure signaling and timeout semantics.
+- Transport adapters beyond in-memory simulation (first practical inter-agent lane).
+
+### v0.0.3 release gate (hard requirement)
+
+v0.0.3 does **not** ship unless both are true:
+
+1. **Correctness:** all conformance tests pass, including chunk ordering/reassembly and timeout semantics.
+2. **Improvement:** benchmark suite shows net communication footprint reduction vs v0.0.2 for supported scenarios (excluding framework overhead where explicitly exempted).
 
 ## v0.0.4 (target)
 
@@ -52,3 +60,7 @@
 ## Gating Principle
 
 A version does not ship unless benchmark deltas demonstrate measurable reduction in communication footprint without violating correctness.
+
+## Flavor note: Starfleet + FTL ops board
+
+Our benchmark board is the "warp readiness panel": if a new release cannot beat the previous lane in measurable signal efficiency, we do not engage warp. No parasect drift, no subspace excuses.

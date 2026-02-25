@@ -43,6 +43,29 @@ v0.0.2 introduces a first compressed primitive sketch with 10 operations:
 
 See `SPEC.md` for formal encoding and `ROADMAP.md` for progression.
 
+## v0.0.1 -> v0.0.2 benchmark check
+
+v0.0.3 planning now includes an explicit benchmark gate. We ship only if we can demonstrate measurable communication footprint improvements over the prior version.
+
+```bash
+python -m logorrhythm.cli --benchmark
+```
+
+Current benchmark corpus compares a v0.0.1-style JSON payload (`from`/`to`/`instruction`/`task`) with v0.0.2 canonical transport across multiple scenarios.
+
+## Is inter-agent communication built in yet?
+
+Short answer: partially.
+
+- **Built in today:** protocol encoding/decoding + a local in-memory mailbox (`AgentBus`) that simulates agent delivery in one Python process.
+- **Not built in yet:** real networked transport adapters (streaming sockets/HTTP/WebSocket/etc.), sequence-aware delivery, and backpressure controls.
+
+That gap is intentionally the v0.0.3 focus.
+
+## Captain's log (FTL lane)
+
+If the farm is the USS *Protofield*, v0.0.2 means impulse engines are online and checksums are holding. v0.0.3 is where we unlock warp lanes: chunked frames, sequence IDs, and deterministic reassembly so parallel agents can coordinate at "go to warp" speed without dropping packets into subspace.
+
 ## Run the demo
 
 ```bash
