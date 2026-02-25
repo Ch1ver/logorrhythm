@@ -22,12 +22,19 @@ class BenchmarkRow:
 
 
 def compute_rows() -> list[BenchmarkRow]:
-    # Deterministic release-published values for CI-stable docs.
+    # Conservative labels to avoid publishing host-specific numbers as fixed guarantees.
     return [
-        BenchmarkRow("JSON baseline", "304", "67", "baseline", "baseline", "Readable, largest payload"),
-        BenchmarkRow("Logorrhythm base64", "236", "104", "612000", "95300", "Compatibility mode (token-heavier)"),
-        BenchmarkRow("Logorrhythm binary", "173", "44", "703000", "98500", "Binary-first default"),
-        BenchmarkRow("Logorrhythm adaptive repeated exchange", "20022 / 125000", "4", "n/a", "n/a", "83.98% size improvement in repeated flows"),
+        BenchmarkRow("JSON baseline", "scenario-dependent", "scenario-dependent", "baseline", "baseline", "Human-readable control baseline"),
+        BenchmarkRow("Logorrhythm base64", "scenario-dependent", "scenario-dependent", "host-dependent", "host-dependent", "Compatibility mode; often token-heavier"),
+        BenchmarkRow("Logorrhythm binary", "scenario-dependent", "scenario-dependent", "host-dependent", "host-dependent", "Binary-first wire format"),
+        BenchmarkRow(
+            "Logorrhythm adaptive repeated exchange",
+            "improves only in repeated streams",
+            "scenario-dependent",
+            "n/a",
+            "n/a",
+            "Validate 100/1k/10k cycles and include worst-case unique-stream regression",
+        ),
     ]
 
 

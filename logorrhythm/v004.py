@@ -2,35 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 
-@dataclass(frozen=True)
-class TokenDelta:
-    plain_tokens: int
-    encoded_tokens: int
-    source: str
-
-    @property
-    def reduction_percent(self) -> float:
-        return ((self.plain_tokens - self.encoded_tokens) / self.plain_tokens) * 100.0
-
-
-def measure_token_delta() -> TokenDelta:
-    return TokenDelta(plain_tokens=67, encoded_tokens=44, source="deterministic release benchmark")
-
-
 def compute_v004_metrics() -> dict[str, object]:
-    token = measure_token_delta()
+    """Legacy compatibility shim for prior tests/docs.
+
+    The returned values are placeholders only and are not release guarantees.
+    Use benchmark helpers for measured values.
+    """
     return {
-        "byte_reduction": 43.09,
-        "throughput_gain": 45.73,
-        "latency_improvement": 31.42,
-        "encode_throughput": 703000.0,
-        "decode_throughput": 98500.0,
-        "adaptive_gain": 83.98,
-        "token_delta": token,
+        "byte_reduction": 0.0,
+        "throughput_gain": 0.0,
+        "latency_improvement": 0.0,
+        "encode_throughput": 0.0,
+        "decode_throughput": 0.0,
+        "adaptive_gain": 0.0,
     }
 
 
@@ -91,9 +78,9 @@ def _build_token_comparison_svg() -> str:
 
 def _build_throughput_svg() -> str:
     return _bar_svg(
-        title="Encode/Decode Throughput",
+        title="Encode/Decode Throughput (relative placeholder)",
         labels=["Encode", "Decode"],
-        values=[703000.0, 98500.0],
+        values=[1.0, 1.0],
         unit="",
         color="#2ca02c",
         max_value=750000.0,
@@ -102,9 +89,9 @@ def _build_throughput_svg() -> str:
 
 def _build_adaptive_svg() -> str:
     return _bar_svg(
-        title="Adaptive Repeated Exchange Compression",
+        title="Adaptive Repeated Exchange Compression (placeholder)",
         labels=["Improvement"],
-        values=[83.98],
+        values=[1.0],
         unit="%",
         color="#d62728",
         max_value=100.0,
