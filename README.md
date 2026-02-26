@@ -44,13 +44,14 @@ Logorrhythm is a **stateful session protocol**. Results are measured over whole 
 3. Unique-heavy streams can regress vs JSON.
 4. Break-even point varies by schema shape, literal repetition, and field entropy.
 
-| Transport Mode | Scope | Total Bytes (N messages) | Break-even | CPU µs/msg | Notes |
-|---|---|---:|---:|---:|---|
-| JSON baseline | Stateless | scenario-dependent | n/a | baseline | Human-readable baseline |
-| Session RAW mode | Session | scenario-dependent | varies | host-dependent | No learning, structural compression only |
-| Session OPCODE mode | Session | scenario-dependent | varies | host-dependent | Schema-negotiated compression |
-| Session Adaptive mode | Long-lived | scenario-dependent | typically < X messages | host-dependent | Learns repeated literals |
-| Worst-case unique | Session | may regress | n/a | host-dependent | Bounded regression expected |
+<!-- LOGORRHYTHM_BENCHMARK_TABLE_START -->
+| Transport | Size Bytes | Tokens | Encode msg/s | Decode msg/s | Notes |
+|---|---:|---:|---:|---:|---|
+| JSON baseline | scenario-dependent | scenario-dependent | baseline | baseline | Human-readable control baseline |
+| Logorrhythm base64 | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Compatibility mode; often token-heavier |
+| Logorrhythm binary | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Binary-first wire format |
+| Logorrhythm adaptive repeated exchange | improves only in repeated streams | scenario-dependent | n/a | n/a | Validate 100/1k/10k cycles and include worst-case unique-stream regression |
+<!-- LOGORRHYTHM_BENCHMARK_TABLE_END -->
 
 **Measured values are host-dependent. Results shown in CAPTAINS_REPORT reflect test host only.**
 

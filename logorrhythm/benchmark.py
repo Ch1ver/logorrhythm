@@ -286,20 +286,39 @@ def run_validation_matrix(scales: tuple[int, ...] = SCALES_DEFAULT, runs: int = 
 
 
 def run_structural_adaptive_breakdown(n: int = 100000, runs: int = 5) -> dict:
+    repeated_factory = lambda i: _message_for_scenario(i, "repeated")
+    adaptive_plus_delta_factory = lambda i: {
+        "id": 7,
+        "cmd": "scan",
+        "target": "node-0",
+        "value": 100000 + i,
+    }
+
     mode_defs = [
-        ("raw_structural", SessionConfig(learning_threshold=10**9, learn_fields=set()), True),
-        ("adaptive_enabled", SessionConfig(learning_threshold=2), False),
-        ("delta_enabled", SessionConfig(learning_threshold=10**9, learn_fields=set()), False),
-        ("adaptive_plus_delta", SessionConfig(learning_threshold=2), False),
+        (
+            "raw_structural",
+            SessionConfig(learning_threshold=10**9, learn_fields=set()),
+            True,
+            repeated_factory,
+        ),
+        ("adaptive_enabled", SessionConfig(learning_threshold=2), False, repeated_factory),
+        (
+            "raw_structural_delta_baseline",
+            SessionConfig(learning_threshold=10**9, learn_fields=set()),
+            True,
+            adaptive_plus_delta_factory,
+        ),
+        (
+            "delta_enabled",
+            SessionConfig(learning_threshold=10**9, learn_fields=set()),
+            False,
+            adaptive_plus_delta_factory,
+        ),
+        ("adaptive_plus_delta", SessionConfig(learning_threshold=2), False, adaptive_plus_delta_factory),
     ]
-    # delta_enabled and adaptive_plus_delta use same transport path; they differ by input stream below.
+
     by_mode: dict[str, dict] = {}
-    for mode, cfg, force_raw in mode_defs:
-        factory = _message_for_scenario
-        if mode == "delta_enabled":
-            factory = lambda i, sk="repeated": {"id": i, "cmd": f"u{i}", "target": f"u{i}", "value": i}
-        elif mode in {"adaptive_enabled", "adaptive_plus_delta", "raw_structural"}:
-            factory = lambda i, sk="repeated": _message_for_scenario(i, "repeated")
+    for mode, cfg, force_raw, factory in mode_defs:
         run_rows = [_run_mode(DEFAULT_SCHEMA, factory, n, cfg, force_raw=force_raw) for _ in range(runs)]
         by_mode[mode] = {
             "json_bytes": _stats([r["json_bytes"] for r in run_rows]),
@@ -311,7 +330,7 @@ def run_structural_adaptive_breakdown(n: int = 100000, runs: int = 5) -> dict:
 
     structural = by_mode["raw_structural"]["savings_pct"]["avg"]
     adaptive = by_mode["adaptive_enabled"]["savings_pct"]["avg"] - structural
-    delta = by_mode["delta_enabled"]["savings_pct"]["avg"] - structural
+    delta = by_mode["delta_enabled"]["savings_pct"]["avg"] - by_mode["raw_structural_delta_baseline"]["savings_pct"]["avg"]
     adaptive_delta = by_mode["adaptive_plus_delta"]["savings_pct"]["avg"] - by_mode["adaptive_enabled"]["savings_pct"]["avg"]
     return {
         "n": n,
