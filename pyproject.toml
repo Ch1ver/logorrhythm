@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "LOGORRHYTHM maintainers"}]
-dependencies = []
+dependencies = ["websockets>=12.0"]
 
 [project.urls]
 Homepage = "https://github.com/ch1ver/logorrhythm"
@@ -20,4 +20,4 @@ Repository = "https://github.com/ch1ver/logorrhythm"
 logorrhythm = "logorrhythm.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["logorrhythm*"]
+include = ["logorrhythm*", "loom*"]
