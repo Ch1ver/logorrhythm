@@ -4,15 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logorrhythm"
-version = "0.0.6"
+version = "0.1.0"
 description = "Machine-native compact protocol for multi-agent communication"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "LOGORRHYTHM maintainers"}]
-dependencies = [
-  "websockets>=12.0",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/ch1ver/logorrhythm"

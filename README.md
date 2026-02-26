@@ -1,114 +1,80 @@
-# LOGORRHYTHM (v0.0.6)
+# LOGORRHYTHM
 
-LOGORRHYTHM is a compact protocol primitive for multi-agent communication with binary-first framing and optional transport compatibility encoding.
+LOGORRHYTHM is now a **stateful session-negotiated opcode protocol for agent-to-agent communication**.
 
-## Performance (v0.0.6)
+Human readability is not a wire requirement. Sessions negotiate a schema fingerprint, optionally transfer schema bytes, then switch to compact opcode mode.
 
-Performance is workload- and host-dependent. To avoid inflated claims, this repository now treats benchmark output as measured data, not fixed guarantees.
+## Core Model
 
-- JSON vs binary payload bytes should be validated per scenario (`python -m logorrhythm.cli --benchmark`)
-- Token savings vary by prompt-safe representation (base64/hex can increase token count)
-- Adaptive compression only improves repeated exchanges and can regress on unique message streams
-- Throughput values are machine-specific and should be reported with run count + variance
+1. HELLO + capability flags
+2. SCHEMA_FINGERPRINT
+3. ACK if known, otherwise NACK and SCHEMA_TRANSFER
+4. ACK
+5. MODE_SWITCH to `OPCODE_MODE`
 
-<!-- LOGORRHYTHM_BENCHMARK_TABLE_START -->
-| Transport | Size Bytes | Tokens | Encode msg/s | Decode msg/s | Notes |
-|---|---:|---:|---:|---:|---|
-| JSON baseline | scenario-dependent | scenario-dependent | baseline | baseline | Human-readable control baseline |
-| Logorrhythm base64 | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Compatibility mode; often token-heavier |
-| Logorrhythm binary | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Binary-first wire format |
-| Logorrhythm adaptive repeated exchange | improves only in repeated streams | scenario-dependent | n/a | n/a | Validate 100/1k/10k cycles and include worst-case unique-stream regression |
-<!-- LOGORRHYTHM_BENCHMARK_TABLE_END -->
+In opcode mode, messages encode as compact binary frames with varints, field IDs, value references, and optional numeric deltas.
 
-## Agent Quick Start
+## Minimal API
 
 ```python
-from logorrhythm import encode, decode
-import json
+from logorrhythm import Session, load_schema
 
-# minimal API: application payload serialized as task text
-wire = encode(task=json.dumps({"op": "HANDOFF", "payload": {"task": "summarize"}}), src="agent-A", dst="agent-B")
-result = decode(wire)
+schema = load_schema("examples/session_schema.json")
+client = Session(schema=schema, role="client")
+server = Session(schema=schema, role="server")
+
+# Handshake
+out = client.initiate_handshake()
+responses = server.receive(out)
+for frame in responses:
+    for back in client.receive(frame):
+        server.receive(back)
+
+# Opcode mode
+wire = client.encode(opcode="TASK", fields={"id": 7, "cmd": "scan", "target": "x", "status": "ok"})
+decoded = server.decode(wire)
 ```
 
-### Binary-first usage (default at encoding layer)
+## Benchmarks (methodology)
 
-```python
-from logorrhythm.encoding import encode_message, decode_message
-from logorrhythm.spec import MessageType
-
-wire = encode_message(message_type=MessageType.AGENT, payload=b"\x01\x02\x03")  # returns bytes
-msg = decode_message(wire)
-```
-
-### Compatibility mode (explicit base64 transport)
-
-```python
-from logorrhythm.encoding import encode_message
-from logorrhythm.spec import MessageType
-
-wire = encode_message(message_type=MessageType.AGENT, payload=b"\x01\x02\x03", transport_base64=True)  # returns str
-```
-
-### Adaptive repeated coordination example
-
-```python
-from logorrhythm.adaptive import AdaptiveCodec
-
-codec = AdaptiveCodec(warmup_hits=2)
-control = "HANDOFF:A1>A2:chunk-ready"
-first = codec.encode(control)   # raw mode (opcode + bytes)
-second = codec.encode(control)  # alias mode (single-byte opcode + alias)
-third = codec.encode(control)   # alias mode again, lower wire cost
-```
-
-## Why Not JSON?
-
-- Smaller wire payloads for recurring agent control traffic.
-- Lower LLM token footprint in transport-adjacent prompts.
-- Faster encode/decode on hot path.
-- No repeated human-readable key overhead on-wire.
-- Drop-in migration path via explicit base64 compatibility mode.
-
-## Design Philosophy
-
-- Tiny by default
-- Binary-first
-- Agent-native
-- No runtime framework
-- Optional compression
-- Deterministic performance
-
-## Binary/default behavior and options
-
-- Binary-first default is in `logorrhythm.encoding.encode_message`.
-- Base64 is opt-in via `transport_base64=True`.
-- Adaptive compression is opt-in via `AdaptiveCodec`.
-- No registry/discovery/runtime framework is required to use core encode/decode.
-
-## Deterministic benchmark graphs
-
-![Size comparison (JSON vs binary)](docs/graphs/size_comparison_json_binary.svg)
-![Token comparison](docs/graphs/token_comparison.svg)
-![Encode/decode throughput](docs/graphs/throughput_encode_decode.svg)
-![Adaptive repeated exchange compression](docs/graphs/adaptive_repeated_exchange.svg)
-
-## Automation contract
-
-Tests are side-effect free and do not write README or graph artifacts. Run benchmark sync explicitly via:
+Run:
 
 ```bash
-python -m logorrhythm.cli --sync-benchmark-table
-python -m logorrhythm.cli --generate-graphs
+python -m logorrhythm.cli --benchmark
 ```
 
-## Commands
+Scenarios:
+- A: long-lived repeated coordination
+- B: mixed stream (partial repetition)
+- C: worst-case unique stream
+
+Metrics:
+- Total bytes over N=1k and 10k
+- Average bytes/message after warmup
+- Break-even count vs JSON baseline
+- CPU encode+decode time
+
+This protocol typically wins in long-lived sessions with repeated fields/values. It may not win for one-off messages.
+
+## Project Layout
+
+- `logorrhythm/core/` active protocol implementation
+- `logorrhythm/legacy/` archived pre-pivot modules
+- `examples/session_schema.json` minimal schema
+
+## Tests
 
 ```bash
 python -m unittest
-python -m logorrhythm.cli --benchmark
-python -m logorrhythm.cli token-benchmark
-python -m logorrhythm.cli inspect <encoded_message>
-python -m logorrhythm.cli tap --ws
-python -m logorrhythm.cli replay <logfile>
 ```
+
+
+## Legacy vs Pivot comparison
+
+To compare old adaptive control framing vs the new opcode session at scales used previously (1, 10, 100, 1000 agents):
+
+```bash
+python -m logorrhythm.cli --compare-legacy
+```
+
+This emits byte totals and ratios for ring-style coordination streams so you can evaluate if the pivot improved your target pattern.

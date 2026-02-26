@@ -1,0 +1,21 @@
+{
+  "message_types": {
+    "TASK": "auto",
+    "RESULT": "auto"
+  },
+  "fields": {
+    "id": "auto",
+    "cmd": "auto",
+    "target": "auto",
+    "status": "auto"
+  },
+  "field_types": {
+    "id": "uvarint",
+    "cmd": "str",
+    "target": "str",
+    "status": "str"
+  },
+  "enums": {
+    "status": ["ok", "err", "retry"]
+  }
+}
