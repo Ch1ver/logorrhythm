@@ -2,6 +2,7 @@ import unittest
 
 from logorrhythm import Session
 from logorrhythm.core.schema import canonical_bytes, fingerprint
+from logorrhythm.core.errors import DecodingError
 from logorrhythm.core.session import MODE_OPCODE, SessionConfig
 
 
@@ -97,6 +98,49 @@ class ProtocolTests(unittest.TestCase):
             total_wire += len(s.encode("TASK", fields))
             total_raw += len(s._encode_raw("TASK", fields))
         self.assertLess(total_wire, int(total_raw * 1.35))
+
+
+    def test_schema_transfer_activates_remote_tables(self):
+        schema_client = {
+            "message_types": {"TASK": 9},
+            "fields": {"id": 7, "cmd": 8},
+            "field_types": {"id": "uvarint", "cmd": "str"},
+        }
+        schema_server = {
+            "message_types": {"OTHER": 1},
+            "fields": {"x": 1},
+            "field_types": {"x": "uvarint"},
+        }
+        a = Session(schema=schema_client, role="client")
+        b = Session(schema=schema_server, role="server")
+        self._handshake_pair(a, b)
+        wire = a.encode("TASK", {"id": 7, "cmd": "scan"})
+        msg = b.decode(wire)
+        self.assertEqual(msg["opcode"], "TASK")
+        self.assertEqual(msg["fields"]["id"], 7)
+
+    def test_receive_rejects_truncated_frame(self):
+        s = Session(schema=SCHEMA_A, role="server")
+        with self.assertRaises(DecodingError):
+            s.receive(bytes([4, 10, 1]))
+
+    def test_bool_fields_do_not_delta_to_ints(self):
+        schema = {
+            "message_types": {"TASK": 1},
+            "fields": {"ok": 1},
+            "field_types": {"ok": "bool"},
+        }
+        a = Session(schema=schema, role="client")
+        b = Session(schema=schema, role="server")
+        a.mode = b.mode = MODE_OPCODE
+        m1 = a.encode("TASK", {"ok": True})
+        m2 = a.encode("TASK", {"ok": False})
+        d1 = b.decode(m1)
+        d2 = b.decode(m2)
+        self.assertIsInstance(d1["fields"]["ok"], bool)
+        self.assertIsInstance(d2["fields"]["ok"], bool)
+        self.assertTrue(d1["fields"]["ok"])
+        self.assertFalse(d2["fields"]["ok"])
 
     def test_session_reset_semantics(self):
         s = Session(schema=SCHEMA_A, role="client")

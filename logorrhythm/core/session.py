@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from .errors import DecodingError, EncodingError, HandshakeError
+from .errors import DecodingError, HandshakeError
 from .frame import (
     decode_bytes,
     decode_str,
@@ -66,19 +66,25 @@ class Session:
         self.mode = MODE_HANDSHAKE
         self.handshake_complete = False
         self.remote_fingerprint: str | None = None
-        self.opcodes = NameTable(self.schema["message_types"])
-        self.fields = NameTable(self.schema["fields"])
-        self.field_types = self.schema.get("field_types", {})
+
         self.value_table = ValueTable(
             max_entries=self.config.value_table_max_entries,
             learning_threshold=self.config.learning_threshold,
         )
+        self.last_values: dict[int, int] = {}
+        self._activate_schema(self.schema)
+
+    def _activate_schema(self, schema: dict) -> None:
+        self.opcodes = NameTable(schema["message_types"])
+        self.fields = NameTable(schema["fields"])
+        self.field_types = schema.get("field_types", {})
+        self.value_table.reset()
         enum_values: list[object] = []
-        for _field, values in self.schema.get("enums", {}).items():
+        for _field, values in schema.get("enums", {}).items():
             enum_values.extend(values)
         if enum_values:
             self.value_table.preload(enum_values)
-        self.last_values: dict[int, int] = {}
+        self.last_values.clear()
 
     def initiate_handshake(self) -> bytes:
         cap_flags = 0b00000011
@@ -91,9 +97,13 @@ class Session:
         outputs: list[bytes] = []
         cursor = 0
         while cursor < len(in_bytes):
+            if cursor + 1 > len(in_bytes):
+                raise DecodingError("truncated frame header")
             frame_type = in_bytes[cursor]
             ln, next_pos = decode_uvarint(in_bytes, cursor + 1)
             end = next_pos + ln
+            if end > len(in_bytes):
+                raise DecodingError("truncated frame payload")
             payload = in_bytes[next_pos:end]
             cursor = end
             outputs.extend(self._handle_frame(frame_type, payload))
@@ -106,6 +116,7 @@ class Session:
             remote_fp = payload.hex()
             self.remote_fingerprint = remote_fp
             if remote_fp in self.schema_cache:
+                self._activate_schema(self.schema_cache[remote_fp])
                 return [make_frame(ACK, b"")]
             if self.config.strict_mode and not self.config.allow_schema_transfer:
                 self.mode = MODE_RAW
@@ -116,8 +127,10 @@ class Session:
             fp = fingerprint(received)
             if self.remote_fingerprint and fp != self.remote_fingerprint:
                 raise HandshakeError("schema fingerprint mismatch")
-            self.schema_cache[fp] = normalize_schema(received)
+            normalized = normalize_schema(received)
+            self.schema_cache[fp] = normalized
             self.remote_fingerprint = fp
+            self._activate_schema(normalized)
             return [make_frame(ACK, b"")]
         if frame_type == ACK:
             if self.mode == MODE_HANDSHAKE:
@@ -146,13 +159,14 @@ class Session:
         for name in sorted(fields, key=lambda n: self.fields.name_to_id[n]):
             field_id = self.fields.name_to_id[name]
             val = fields[name]
+            is_int_delta_eligible = isinstance(val, int) and not isinstance(val, bool)
             flags = 0
             payload = b""
             ref_id = self.value_table.get_id(val)
             if ref_id is not None:
                 flags |= FLAG_VALUE_REF
                 payload = encode_uvarint(ref_id)
-            elif isinstance(val, int) and field_id in self.last_values:
+            elif is_int_delta_eligible and field_id in self.last_values:
                 delta = val - self.last_values[field_id]
                 if -63 <= delta <= 63:
                     flags |= FLAG_DELTA
@@ -165,15 +179,14 @@ class Session:
             body.extend(encode_uvarint(flags))
             body.extend(payload)
             self._learn_value(name, val)
-            if isinstance(val, int):
+            if is_int_delta_eligible:
                 self.last_values[field_id] = val
         return make_frame(OPCODE_MESSAGE, bytes(body))
 
     def decode(self, msg: bytes) -> dict:
         frame_type, payload = parse_frame(msg)
         if frame_type == RAW_MESSAGE:
-            obj = json.loads(payload.decode("utf-8"))
-            return obj
+            return json.loads(payload.decode("utf-8"))
         if frame_type != OPCODE_MESSAGE:
             raise DecodingError("unsupported frame type")
         pos = 0
@@ -196,12 +209,15 @@ class Session:
                 val, pos = self._decode_typed_literal(name, payload, pos)
             fields[name] = val
             self._learn_value(name, val)
-            if isinstance(val, int):
+            if isinstance(val, int) and not isinstance(val, bool):
                 self.last_values[field_id] = val
         return {"opcode": opcode, "fields": fields}
 
     def _encode_raw(self, opcode: str, fields: dict[str, object]) -> bytes:
-        return make_frame(RAW_MESSAGE, json.dumps({"opcode": opcode, "fields": fields}, separators=(",", ":")).encode("utf-8"))
+        return make_frame(
+            RAW_MESSAGE,
+            json.dumps({"opcode": opcode, "fields": fields}, separators=(",", ":")).encode("utf-8"),
+        )
 
     def _type_code_for(self, name: str, value: object) -> int:
         declared = self.field_types.get(name)
@@ -266,5 +282,4 @@ class Session:
         self.mode = MODE_HANDSHAKE
         self.handshake_complete = False
         self.remote_fingerprint = None
-        self.value_table.reset()
-        self.last_values.clear()
+        self._activate_schema(self.schema)
