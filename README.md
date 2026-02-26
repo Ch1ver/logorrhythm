@@ -41,6 +41,7 @@ Run:
 
 ```bash
 python -m logorrhythm.cli --benchmark
+python -m logorrhythm.cli --benchmark-extended
 ```
 
 Scenarios:
@@ -78,3 +79,6 @@ python -m logorrhythm.cli --compare-legacy
 ```
 
 This emits byte totals and ratios for ring-style coordination streams so you can evaluate if the pivot improved your target pattern.
+
+
+The extended benchmark includes 100k-message runs so you can verify savings trend beyond 1k and inspect CPU cost per message against byte savings.

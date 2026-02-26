@@ -21,6 +21,20 @@ class ValueTable:
         self._seen: dict[object, int] = {}
         self._next_id = 1
 
+
+    def preload(self, values: list[object]) -> None:
+        """Preload known common literals with stable IDs for this session."""
+        for value in values:
+            if value in self.value_to_id:
+                self._touch(value)
+                continue
+            vid = self._next_id
+            self._next_id += 1
+            self.value_to_id[value] = vid
+            self.id_to_value[vid] = value
+            self._touch(value)
+        self._evict_if_needed()
+
     def maybe_learn(self, value: object, allow: bool = True) -> int | None:
         if value in self.value_to_id:
             vid = self.value_to_id[value]

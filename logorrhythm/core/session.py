@@ -73,6 +73,11 @@ class Session:
             max_entries=self.config.value_table_max_entries,
             learning_threshold=self.config.learning_threshold,
         )
+        enum_values: list[object] = []
+        for _field, values in self.schema.get("enums", {}).items():
+            enum_values.extend(values)
+        if enum_values:
+            self.value_table.preload(enum_values)
         self.last_values: dict[int, int] = {}
 
     def initiate_handshake(self) -> bytes:

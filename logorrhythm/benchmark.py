@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
 
 from .core.session import MODE_OPCODE, Session
 from .legacy.adaptive import AdaptiveCodec
@@ -14,15 +13,10 @@ DEFAULT_SCHEMA = {
     "message_types": {"TASK": 1},
     "fields": {"id": 1, "cmd": 2, "target": 3, "value": 4},
     "field_types": {"id": "uvarint", "cmd": "str", "target": "str", "value": "uvarint"},
+    "enums": {
+        "cmd": ["scan", "handoff"],
+    },
 }
-
-
-@dataclass(frozen=True)
-class ScaleResult:
-    agents: int
-    messages: int
-    new_wire_bytes: int
-    legacy_wire_bytes: int
 
 
 def _json_size(msg: dict) -> int:
@@ -58,13 +52,15 @@ def run_scenario(name: str, messages: list[dict], n: int) -> dict:
         "n": n,
         "wire_bytes": total_wire,
         "json_bytes": total_json,
+        "savings_pct_vs_json": ((total_json - total_wire) / total_json) * 100.0,
         "avg_after_warm": avg_after_warm,
         "cpu_s": t1 - t0,
-        "break_even": _break_even(messages),
+        "cpu_us_per_message": ((t1 - t0) / n) * 1_000_000,
+        "break_even": break_even_count(messages),
     }
 
 
-def _break_even(messages: list[dict], cap: int = 2000) -> int | None:
+def break_even_count(messages: list[dict], cap: int = 200000) -> int | None:
     a = _warm_session(DEFAULT_SCHEMA)
     wire = js = 0
     for i in range(cap):
@@ -76,7 +72,7 @@ def _break_even(messages: list[dict], cap: int = 2000) -> int | None:
     return None
 
 
-def run_all() -> list[dict]:
+def run_all(scales: tuple[int, ...] = (1000, 10000)) -> list[dict]:
     repeated = [{"id": 7, "cmd": "scan", "target": "x", "value": 99}]
     mixed = [
         {"id": i % 10, "cmd": "scan", "target": f"node-{i%5}", "value": i % 100}
@@ -87,7 +83,7 @@ def run_all() -> list[dict]:
         for i in range(200)
     ]
     results = []
-    for n in (1000, 10000):
+    for n in scales:
         results.append(run_scenario("A_repeated", repeated, n))
         results.append(run_scenario("B_mixed", mixed, n))
         results.append(run_scenario("C_unique", unique, n))
@@ -111,10 +107,7 @@ def _new_wire_bytes_for_stream(payloads: list[dict]) -> int:
 
 
 def run_agent_scale_compare(counts: tuple[int, ...] = (1, 10, 100, 1000), rounds_per_agent: int = 10) -> list[dict]:
-    """Compare legacy adaptive control-message bytes vs new opcode session bytes.
-
-    Each agent emits `rounds_per_agent` coordination messages in a ring.
-    """
+    """Compare legacy adaptive control-message bytes vs new opcode session bytes."""
     rows: list[dict] = []
     for agents in counts:
         payloads = []
