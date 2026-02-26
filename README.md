@@ -38,6 +38,15 @@ decoded = server.decode(wire)
 ## Benchmarks (methodology)
 
 Run:
+<!-- LOGORRHYTHM_BENCHMARK_TABLE_START -->
+| Transport | Size Bytes | Tokens | Encode msg/s | Decode msg/s | Notes |
+|---|---:|---:|---:|---:|---|
+| JSON baseline | scenario-dependent | scenario-dependent | baseline | baseline | Human-readable control baseline |
+| Logorrhythm base64 | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Compatibility mode; often token-heavier |
+| Logorrhythm binary | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Binary-first wire format |
+| Logorrhythm adaptive repeated exchange | improves only in repeated streams | scenario-dependent | n/a | n/a | Validate 100/1k/10k cycles and include worst-case unique-stream regression |
+<!-- LOGORRHYTHM_BENCHMARK_TABLE_END -->
+
 
 ```bash
 python -m logorrhythm.cli --benchmark
