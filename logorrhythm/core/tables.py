@@ -36,6 +36,8 @@ class ValueTable:
         self._evict_if_needed()
 
     def maybe_learn(self, value: object, allow: bool = True) -> int | None:
+        if not self._is_hashable(value):
+            return None
         if value in self.value_to_id:
             vid = self.value_to_id[value]
             self._touch(value)
@@ -55,6 +57,8 @@ class ValueTable:
         return vid
 
     def get_id(self, value: object) -> int | None:
+        if not self._is_hashable(value):
+            return None
         vid = self.value_to_id.get(value)
         if vid is not None:
             self._touch(value)
@@ -68,6 +72,14 @@ class ValueTable:
     def _touch(self, value: object) -> None:
         self._lru[value] = None
         self._lru.move_to_end(value)
+
+    @staticmethod
+    def _is_hashable(value: object) -> bool:
+        try:
+            hash(value)
+        except TypeError:
+            return False
+        return True
 
     def _evict_if_needed(self) -> None:
         while len(self.value_to_id) > self.max_entries:

@@ -35,18 +35,24 @@ wire = client.encode(opcode="TASK", fields={"id": 7, "cmd": "scan", "target": "x
 decoded = server.decode(wire)
 ```
 
-## Benchmarks (methodology)
+## BENCHMARKS (Session Protocol Methodology)
 
-Run:
-<!-- LOGORRHYTHM_BENCHMARK_TABLE_START -->
-| Transport | Size Bytes | Tokens | Encode msg/s | Decode msg/s | Notes |
-|---|---:|---:|---:|---:|---|
-| JSON baseline | scenario-dependent | scenario-dependent | baseline | baseline | Human-readable control baseline |
-| Logorrhythm base64 | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Compatibility mode; often token-heavier |
-| Logorrhythm binary | scenario-dependent | scenario-dependent | host-dependent | host-dependent | Binary-first wire format |
-| Logorrhythm adaptive repeated exchange | improves only in repeated streams | scenario-dependent | n/a | n/a | Validate 100/1k/10k cycles and include worst-case unique-stream regression |
-<!-- LOGORRHYTHM_BENCHMARK_TABLE_END -->
+Logorrhythm is a **stateful session protocol**. Results are measured over whole sessions, not single packets.
 
+1. Savings depend on both message count and repetition density.
+2. Handshake + schema negotiation cost is paid once, then amortized.
+3. Unique-heavy streams can regress vs JSON.
+4. Break-even point varies by schema shape, literal repetition, and field entropy.
+
+| Transport Mode | Scope | Total Bytes (N messages) | Break-even | CPU µs/msg | Notes |
+|---|---|---:|---:|---:|---|
+| JSON baseline | Stateless | scenario-dependent | n/a | baseline | Human-readable baseline |
+| Session RAW mode | Session | scenario-dependent | varies | host-dependent | No learning, structural compression only |
+| Session OPCODE mode | Session | scenario-dependent | varies | host-dependent | Schema-negotiated compression |
+| Session Adaptive mode | Long-lived | scenario-dependent | typically < X messages | host-dependent | Learns repeated literals |
+| Worst-case unique | Session | may regress | n/a | host-dependent | Bounded regression expected |
+
+**Measured values are host-dependent. Results shown in CAPTAINS_REPORT reflect test host only.**
 
 ```bash
 python -m logorrhythm.cli --benchmark
@@ -54,17 +60,18 @@ python -m logorrhythm.cli --benchmark-extended
 ```
 
 Scenarios:
-- A: long-lived repeated coordination
-- B: mixed stream (partial repetition)
-- C: worst-case unique stream
+- Repeated control stream
+- Mixed stream (40% repeat, 60% unique)
+- Fully unique stream
 
-Metrics:
-- Total bytes over N=1k and 10k
-- Average bytes/message after warmup
-- Break-even count vs JSON baseline
-- CPU encode+decode time
-
-This protocol typically wins in long-lived sessions with repeated fields/values. It may not win for one-off messages.
+Metrics per scale (N = 1, 10, 100, 1k, 10k, 100k):
+- total JSON bytes
+- total session-protocol bytes (includes one-time handshake/schema cost)
+- handshake overhead vs steady-state bytes
+- savings percentage
+- break-even message count
+- encode+decode CPU total and CPU µs/msg
+- avg/min/max/stdev across 3 runs
 
 ## Project Layout
 
