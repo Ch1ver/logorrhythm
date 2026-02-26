@@ -1,5 +1,7 @@
 Project: HelloLOOM
-Vision: A Python command line utility that accepts a number and returns whether it is prime. Must include tests, a benchmark measuring calls per second, and a README.
-Success criteria: All tests pass. Benchmark shows over 10,000 primality checks per second. README exists.
-Constraints: Pure Python. No external dependencies. Under 200 lines total.
-Suggested task decomposition: optional.
+Vision: Build a Python command-line utility that takes one integer argument and prints whether it is prime.
+Success criteria: Unit tests pass, benchmark throughput is greater than 10,000 primality checks/second, and project README is present.
+Constraints: Pure Python only, no external dependencies, concise implementation.
+Input/Output contract: `python helloloom.py 13` prints `prime`; `python helloloom.py 21` prints `not-prime`.
+Required files: helloloom.py, test_helloloom.py, benchmark.py, README.md.
+Benchmark method: Run repeated primality checks and print checks per second as a single numeric line.
