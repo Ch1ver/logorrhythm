@@ -196,6 +196,7 @@ def main() -> None:
     parser.add_argument("--token-budget", type=int, default=None)
     args = parser.parse_args()
 
+    print(f"[LOOM] Starting orchestrator with brief: {args.brief}")
     os.makedirs("loom_output", exist_ok=True)
     brief = parse_brief(Path(args.brief))
     tasks = ensure_task_graph(brief, Path("task_graph.json"))

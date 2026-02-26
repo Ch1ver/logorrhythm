@@ -1,11 +1,39 @@
 # LOOM
 
-LOOM (Logorrhythm Orchestrated Operations Manager) is a 6-agent autonomous development orchestrator built on Logorrhythm opcode sessions. ARCHITECT reads `brief.md`, creates/resumes `task_graph.json`, and coordinates BUILDER, TESTER, BENCHMARKER, CRITIC, and REPORTER using binary opcodes only.
+LOOM (Logorrhythm Orchestrated Operations Manager) is a lightweight autonomous orchestrator that runs a fixed multi-agent software loop over Logorrhythm opcode sessions. You provide a `brief.md`; LOOM spins an architect loop, coordinates agents, and writes outputs to `loom_output/` plus runtime logs/report files.
 
-Launch with:
+## 6-agent architecture
+- **Architect (`loom/start.py`)**: reads the brief, creates/resumes `task_graph.json`, assigns tasks, tracks progress, and requests final reporting.
+- **Builder**: materializes project artifacts for assigned tasks (current default flow writes the HelloLOOM implementation bundle).
+- **Tester**: runs unit tests and sends pass/fail + coverage signals.
+- **Benchmarker**: runs throughput benchmark scripts and reports value + delta.
+- **Critic**: applies a basic verdict gate over produced artifacts.
+- **Reporter**: compiles progress events into `loom_report.md`.
 
-`python -m loom.start --brief brief.md`
+## Writing `brief.md`
+Use simple `Key: Value` lines. Minimum useful fields:
 
-Each cycle assigns a task, builds code, runs tests, benchmarks throughput, applies critic verdicts, logs progress, and emits a final report. Startup also writes `loom_efficiency.log` comparing Logorrhythm byte cost against JSON-style natural language payloads for a full orchestration cycle.
+```md
+Project: HelloLOOM
+Vision: Build a Python CLI that returns whether a number is prime.
+Success criteria: Tests pass; benchmark > 10000 checks/sec; README exists.
+Constraints: Pure Python, no external dependencies.
+```
 
-Artifacts from the proof run are written to `loom_output/HelloLOOM` and `loom/runtime/`.
+## Launch
+```bash
+python -m loom.start --brief brief.md
+```
+
+Optional token budget guardrail:
+
+```bash
+python -m loom.start --brief brief.md --token-budget 5000
+```
+
+## Expected outputs
+On completion, expect:
+- `loom_output/HelloLOOM/` (code, tests, benchmark, README)
+- `loom/runtime/progress.jsonl` and runtime logs
+- `task_graph.json` with status updates
+- `loom_report.md` final summary stub
